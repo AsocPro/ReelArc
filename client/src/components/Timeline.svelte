@@ -17,46 +17,28 @@
   let loading = true;
   let error = '';
   
-  $: if (data.length > 0 && timeline) {
+  // Watch for changes in data and container
+  $: if (data.length > 0 && container && !timeline) {
+    // Initialize timeline if container is available but timeline isn't created yet
+    initializeTimeline();
+  } else if (data.length > 0 && timeline) {
+    // Update existing timeline with new data
     convertToTimelineItems();
     updateTimeline();
+    loading = false; // Ensure loading is set to false when data is available
+  }
+  
+  // Watch for container changes
+  $: if (container && data.length > 0 && !timeline) {
+    initializeTimeline();
   }
   
   onMount(async () => {
-    // Initialize an empty timeline
-    const options = {
-      height: '300px',
-      minHeight: '300px',
-      stack: true,
-      showCurrentTime: true,
-      zoomable: true,
-      zoomMin: 1000 * 60 * 60 * 24, // one day in milliseconds
-      zoomMax: 1000 * 60 * 60 * 24 * 31 * 3, // about three months in milliseconds
-      type: 'box',
-      orientation: {
-        axis: 'top',
-        item: 'top'
-      }
-    };
-    
-    timeline = new Timeline(container, [], options);
-    
-    timeline.on('select', function(properties: any) {
-      if (properties.items && properties.items.length) {
-        const selectedId = properties.items[0];
-        const selectedItem = data.find(item => item.id === selectedId);
-        if (selectedItem) {
-          dispatch('item-select', selectedItem);
-        }
-      }
-    });
-    
     // If no data is provided, fetch it
     if (data.length === 0) {
       try {
         loading = true;
         data = await fetchMediaItems();
-        loading = false;
       } catch (err) {
         loading = false;
         error = 'Failed to load media items';
@@ -64,10 +46,15 @@
       }
     }
     
-    if (data.length > 0) {
-      convertToTimelineItems();
-      updateTimeline();
-    }
+    // Wait for the next tick to ensure container is rendered
+    setTimeout(() => {
+      if (container && data.length > 0) {
+        initializeTimeline();
+      } else if (data.length > 0) {
+        // If we have data but no container yet, we'll wait for the container to be bound
+        loading = false;
+      }
+    }, 0);
     
     return () => {
       if (timeline) {
@@ -75,6 +62,62 @@
       }
     };
   });
+  
+  function initializeTimeline() {
+    if (!container) {
+      console.error('Timeline container element is not available');
+      return;
+    }
+    
+    // Don't reinitialize if timeline already exists
+    if (timeline) {
+      return;
+    }
+    
+    // Initialize an empty timeline
+    const options = {
+      height: '300px',
+      minHeight: '300px',
+      stack: true,
+      showCurrentTime: true,
+      zoomable: true,
+      zoomMin: 1000 * 60 * 60, // one hour in milliseconds
+      zoomMax: 1000 * 60 * 60 * 24 , // about one day in milliseconds
+      type: 'box',
+      orientation: {
+        axis: 'top',
+        item: 'top'
+      }
+    };
+    
+    try {
+      // Create the timeline instance
+      timeline = new Timeline(container, [], options);
+      
+      timeline.on('select', function(properties: any) {
+        if (properties.items && properties.items.length) {
+          const selectedId = properties.items[0];
+          const selectedItem = data.find(item => item.id === selectedId);
+          if (selectedItem) {
+            dispatch('item-select', selectedItem);
+          }
+        }
+      });
+      
+      // Add data to the timeline if available
+      if (data.length > 0) {
+        convertToTimelineItems();
+        updateTimeline();
+      }
+      
+      // Set loading to false now that timeline is initialized
+      loading = false;
+    } catch (err) {
+      console.error('Failed to initialize timeline:', err);
+      error = 'Failed to initialize timeline';
+      loading = false; // Set loading to false even if there's an error
+    }
+  }
   
   function convertToTimelineItems() {
     timelineItems = data.map(item => {
@@ -111,11 +154,20 @@
   }
   
   function updateTimeline() {
+    if (!timeline) {
+      console.error('Cannot update timeline: timeline is not initialized');
+      return;
+    }
+    
     // Convert data to format expected by vis-timeline
     const items = new DataSet(timelineItems);
     
-    timeline.setItems(items);
-    timeline.fit();
+    try {
+      timeline.setItems(items);
+      timeline.fit();
+    } catch (err) {
+      console.error('Error updating timeline:', err);
+    }
   }
 </script>
 
