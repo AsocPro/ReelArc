@@ -32,6 +32,17 @@ type MediaMetadata struct {
 	Transcripts []TranscriptEntry `json:"transcripts,omitempty"`
 }
 
+// MediaItem represents a media item in the mock data
+type MediaItem struct {
+	ID            string   `json:"id"`
+	Type          string   `json:"type"`
+	Timestamp     string   `json:"timestamp"`
+	Duration      int      `json:"duration,omitempty"`
+	Filename      string   `json:"filename"`
+	Transcription string   `json:"transcription"`
+	Labels        []string `json:"labels"`
+}
+
 // TranscriptEntry represents a single transcript entry
 type TranscriptEntry struct {
 	Start    float64 `json:"start"`
@@ -47,6 +58,7 @@ const (
 	mediaDir     = "./data/media"
 	metadataDir  = "./data/metadata"
 	timelineFile = "./data/timeline.json"
+	mockMediaFile = "./data/metadata/mock-media.json"
 	clientDir    = "./client/dist"
 )
 
@@ -61,6 +73,7 @@ func main() {
 	http.HandleFunc("/api/timeline", handleTimeline)
 	http.HandleFunc("/api/upload", handleUpload)
 	http.HandleFunc("/api/metadata/", handleMetadata)
+	http.HandleFunc("/api/media", handleMedia)
 
 	// Serve media files
 	http.HandleFunc("/media/", handleMediaFiles)
@@ -255,6 +268,22 @@ func handleMediaFiles(w http.ResponseWriter, r *http.Request) {
 
 	filePath := filepath.Join(mediaDir, filename)
 	http.ServeFile(w, r, filePath)
+}
+
+func handleMedia(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	data, err := os.ReadFile(mockMediaFile)
+	if err != nil {
+		http.Error(w, "Failed to read media data", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
 }
 
 func handleStaticFiles(w http.ResponseWriter, r *http.Request) {

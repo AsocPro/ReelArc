@@ -2,18 +2,27 @@
   import { onMount, createEventDispatcher } from 'svelte';
   import { DataSet, Timeline } from 'vis-timeline/standalone';
   import 'vis-timeline/styles/vis-timeline-graph2d.css';
+  import type { MediaItem, TimelineItem } from '../lib/types';
+  import { fetchMediaItems } from '../lib/api';
   
-  export let data: any[] = [];
+  export let data: MediaItem[] = [];
   
-  const dispatch = createEventDispatcher();
+  const dispatch = createEventDispatcher<{
+    'item-select': MediaItem;
+  }>();
+  
   let container: HTMLElement;
   let timeline: any;
+  let timelineItems: TimelineItem[] = [];
+  let loading = true;
+  let error = '';
   
   $: if (data.length > 0 && timeline) {
+    convertToTimelineItems();
     updateTimeline();
   }
   
-  onMount(() => {
+  onMount(async () => {
     // Initialize an empty timeline
     const options = {
       height: '300px',
@@ -42,7 +51,21 @@
       }
     });
     
+    // If no data is provided, fetch it
+    if (data.length === 0) {
+      try {
+        loading = true;
+        data = await fetchMediaItems();
+        loading = false;
+      } catch (err) {
+        loading = false;
+        error = 'Failed to load media items';
+        console.error(error, err);
+      }
+    }
+    
     if (data.length > 0) {
+      convertToTimelineItems();
       updateTimeline();
     }
     
@@ -53,25 +76,60 @@
     };
   });
   
+  function convertToTimelineItems() {
+    timelineItems = data.map(item => {
+      const timelineItem: TimelineItem = {
+        id: item.id,
+        content: item.filename,
+        start: item.timestamp,
+        type: getTimelineItemType(item.type),
+        className: `item-${item.type}`,
+        mediaItem: item
+      };
+      
+      // Add end time for range items (audio/video)
+      if (item.duration) {
+        const startDate = new Date(item.timestamp);
+        const endDate = new Date(startDate.getTime() + item.duration * 1000);
+        timelineItem.end = endDate.toISOString();
+      }
+      
+      return timelineItem;
+    });
+  }
+  
+  function getTimelineItemType(mediaType: string): string {
+    switch (mediaType) {
+      case 'photo':
+        return 'box';
+      case 'audio':
+      case 'video':
+        return 'range';
+      default:
+        return 'box';
+    }
+  }
+  
   function updateTimeline() {
     // Convert data to format expected by vis-timeline
-    const items = new DataSet(
-      data.map(item => ({
-        id: item.id,
-        content: item.content,
-        start: item.start,
-        end: item.end,
-        type: item.type === 'image' ? 'box' : 'range',
-        className: `item-${item.type || 'default'}`
-      }))
-    );
+    const items = new DataSet(timelineItems);
     
     timeline.setItems(items);
     timeline.fit();
   }
 </script>
 
-<div class="timeline-container" bind:this={container}></div>
+<div class="timeline-container">
+  {#if loading}
+    <div class="loading">Loading timeline data...</div>
+  {:else if error}
+    <div class="error">{error}</div>
+  {:else if data.length === 0}
+    <div class="empty">No media items found</div>
+  {:else}
+    <div class="timeline" bind:this={container}></div>
+  {/if}
+</div>
 
 <style>
   .timeline-container {
@@ -81,6 +139,31 @@
     border: 1px solid #ddd;
     border-radius: 4px;
     overflow: hidden;
+    position: relative;
+  }
+  
+  .timeline {
+    width: 100%;
+    height: 100%;
+  }
+  
+  .loading, .error, .empty {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    color: #666;
+    font-size: 1rem;
+  }
+  
+  .error {
+    color: #d32f2f;
+  }
+  
+  :global(.item-photo) {
+    background-color: #aed581 !important;
+    border-color: #8BC34A !important;
   }
   
   :global(.item-audio) {
@@ -91,11 +174,6 @@
   :global(.item-video) {
     background-color: #ffab91 !important;
     border-color: #FF5722 !important;
-  }
-  
-  :global(.item-image) {
-    background-color: #aed581 !important;
-    border-color: #8BC34A !important;
   }
   
   :global(.item-default) {

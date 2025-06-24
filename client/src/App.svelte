@@ -1,39 +1,55 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Timeline from './components/Timeline.svelte';
-  import MediaViewer from './components/MediaViewer.svelte';
+  import SidePanel from './components/SidePanel.svelte';
   import UploadForm from './components/UploadForm.svelte';
+  import type { MediaItem } from './lib/types';
+  import { fetchMediaItems } from './lib/api';
   
-  let timelineData: any[] = [];
-  let selectedItem: any = null;
+  let mediaItems: MediaItem[] = [];
+  let selectedItem: MediaItem | null = null;
+  let sidePanelOpen = false;
+  let loading = true;
+  let error = '';
   
   onMount(async () => {
-    try {
-      const response = await fetch('/api/timeline');
-      if (response.ok) {
-        timelineData = await response.json();
-      } else {
-        console.error('Failed to fetch timeline data');
-      }
-    } catch (error) {
-      console.error('Error fetching timeline data:', error);
-    }
+    await loadMediaItems();
   });
   
-  function handleItemSelect(event: CustomEvent) {
-    selectedItem = event.detail;
+  async function loadMediaItems() {
+    try {
+      loading = true;
+      mediaItems = await fetchMediaItems();
+      loading = false;
+    } catch (err) {
+      loading = false;
+      error = 'Failed to load media items';
+      console.error(error, err);
+    }
   }
   
-  function handleUploadSuccess(event: CustomEvent) {
-    // Refresh timeline data after successful upload
-    fetch('/api/timeline')
-      .then(response => response.json())
-      .then(data => {
-        timelineData = data;
-      })
-      .catch(error => {
-        console.error('Error refreshing timeline data:', error);
-      });
+  function handleItemSelect(event: CustomEvent<MediaItem>) {
+    selectedItem = event.detail;
+    sidePanelOpen = true;
+  }
+  
+  function handleSidePanelClose() {
+    sidePanelOpen = false;
+  }
+  
+  function handleItemUpdate(event: CustomEvent<MediaItem>) {
+    const updatedItem = event.detail;
+    // Update the item in our array
+    mediaItems = mediaItems.map(item => 
+      item.id === updatedItem.id ? updatedItem : item
+    );
+    // Update the selected item
+    selectedItem = updatedItem;
+  }
+  
+  function handleUploadSuccess() {
+    // Refresh media items after successful upload
+    loadMediaItems();
   }
 </script>
 
@@ -50,21 +66,25 @@
     
     <div class="timeline-section">
       <h2>Media Timeline</h2>
-      <Timeline 
-        data={timelineData} 
-        on:item-select={handleItemSelect} 
-      />
-    </div>
-    
-    <div class="viewer-section">
-      <h2>Media Viewer</h2>
-      {#if selectedItem}
-        <MediaViewer item={selectedItem} />
+      {#if loading}
+        <div class="loading">Loading media data...</div>
+      {:else if error}
+        <div class="error">{error}</div>
       {:else}
-        <p>Select an item from the timeline to view</p>
+        <Timeline 
+          data={mediaItems} 
+          on:item-select={handleItemSelect} 
+        />
       {/if}
     </div>
   </div>
+  
+  <SidePanel 
+    item={selectedItem} 
+    open={sidePanelOpen}
+    on:close={handleSidePanelClose}
+    on:update={handleItemUpdate}
+  />
 </main>
 
 <style>
@@ -99,7 +119,7 @@
   
   @media (min-width: 768px) {
     .container {
-      grid-template-columns: 1fr 2fr;
+      grid-template-columns: 1fr;
     }
     
     .timeline-section {
@@ -110,5 +130,18 @@
   h2 {
     margin-top: 0;
     color: #555;
+  }
+  
+  .loading, .error {
+    padding: 2rem;
+    text-align: center;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    color: #666;
+  }
+  
+  .error {
+    background-color: #ffebee;
+    color: #d32f2f;
   }
 </style>
