@@ -1,0 +1,10 @@
+{
+  "id": "media-002",
+  "type": "audio",
+  "timestamp": "2025-06-23T14:10:00Z",
+  "duration": 120,
+  "filename": "audio1.mp3",
+  "transcription": "Test audio transcription...",
+  "labels": []
+}
+

@@ -38,16 +38,34 @@ fi
 
 # Start the frontend in the background
 echo "Starting frontend development server..."
-cd client && bun run dev --host &
+cd client
+bun run dev --host > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
+cd ..
 
 # Wait a moment for the frontend to start
 sleep 2
 
 # Start the backend in the background
 echo "Starting backend server..."
-cd server && go run main.go &
-BACKEND_PID=$!
+# First, check if anything is using port 8080 and kill it
+PORT_PID=$(lsof -ti :8080)
+if [ ! -z "$PORT_PID" ]; then
+    echo "Found process using port 8080 (PID: $PORT_PID). Killing it..."
+    kill -9 $PORT_PID
+    sleep 1
+fi
+
+cd server
+go run main.go > ../backend.log 2>&1 &
+# Get the actual Go process PID, not the shell PID
+sleep 2
+BACKEND_PID=$(pgrep -f "go run main.go")
+# If pgrep fails, try to find by port
+if [ -z "$BACKEND_PID" ]; then
+    BACKEND_PID=$(lsof -ti :8080)
+fi
+cd ..
 
 # Save PIDs to env file
 echo "FRONTEND_PID=$FRONTEND_PID" > $PID_ENV_FILE
