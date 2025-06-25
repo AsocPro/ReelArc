@@ -72,11 +72,15 @@ func main() {
 	// Create sample timeline data if it doesn't exist
 	ensureSampleTimelineData()
 
+	// Initialize transcription system
+	InitTranscriptionSystem()
+
 	// API routes
 	http.HandleFunc("/api/timeline", handleTimeline)
 	http.HandleFunc("/api/upload", handleUpload)
 	http.HandleFunc("/api/metadata/", handleMetadata)
 	http.HandleFunc("/api/media", handleMedia)
+	http.HandleFunc("/api/transcription/status", handleTranscriptionStatus)
 
 	// Serve media files
 	http.HandleFunc("/media/", handleMediaFiles)
@@ -305,6 +309,12 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error saving metadata for %s: %v", filename, err)
 			continue
 		}
+		
+		// Add to transcription queue if it's an audio or video file
+		if mediaType == "audio" || mediaType == "video" {
+			log.Printf("Adding %s to transcription queue", filename)
+			TQueue.AddToQueue(filename)
+		}
 
 		// Add to responses
 		responses = append(responses, FileResponse{
@@ -462,4 +472,19 @@ func handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeFile(w, r, path)
+}
+
+// Handler for transcription status API
+func handleTranscriptionStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get all transcription statuses
+	statuses := TQueue.GetAllStatuses()
+
+	// Return as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(statuses)
 }
