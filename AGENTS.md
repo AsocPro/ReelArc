@@ -2,11 +2,16 @@
 
 ## Build Commands
 - **Frontend Dev**: `cd client && bun run dev`
+- **Run Dev Build**: `./stop_dev.sh && ./start_dev.sh`
 - **Build**: `./build.sh` (builds frontend and backend)
 - **Type Check**: `cd client && bun run check`
 - **Run Tests**: No test commands defined yet
 
 ## Code Style
+
+### Coding workflow
+- After each step that is performed make a git commit with the changed files.
+- After each set of steps is completed if any Go code was modified then Run Dev Build.
 
 ### TypeScript/Svelte
 - Use TypeScript with strict type checking
@@ -34,4 +39,4 @@
 ### Project Structure
 - Frontend: Svelte components in `client/src/components/`
 - Backend: Go server in `server/`
-- Data storage in `data/` directory
+- Data storage in `server/data/` directory

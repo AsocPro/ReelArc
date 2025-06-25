@@ -81,7 +81,7 @@
       stack: true,
       showCurrentTime: true,
       zoomable: true,
-      zoomMin: 1000 * 60 * 60, // one hour in milliseconds
+      zoomMin: 1000 * 60 , // one minute in milliseconds
       zoomMax: 1000 * 60 * 60 * 24 , // about one day in milliseconds
       type: 'box',
       orientation: {

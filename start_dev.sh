@@ -57,7 +57,7 @@ if [ ! -z "$PORT_PID" ]; then
 fi
 
 cd server
-go run main.go > ../backend.log 2>&1 &
+go run main.go transcription.go > ../backend.log 2>&1 &
 # Get the actual Go process PID, not the shell PID
 sleep 2
 BACKEND_PID=$(pgrep -f "go run main.go")
