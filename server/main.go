@@ -159,142 +159,168 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form, 10 MB max
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
+	// Parse multipart form, 50 MB max (increased for multiple files)
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
 
-	file, handler, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "Failed to get file from form", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// Create file path
-	filename := handler.Filename
-	filePath := filepath.Join(mediaDir, filename)
-
-	// Create a temporary buffer to store the file content
-	// We need this to read EXIF data and then save the file
-	fileBytes, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+	// Get all files from the form
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		http.Error(w, "No files uploaded", http.StatusBadRequest)
 		return
 	}
 
-	// Create file
-	dst, err := os.Create(filePath)
-	if err != nil {
-		http.Error(w, "Failed to create file", http.StatusInternalServerError)
-		return
+	// Response data for all files
+	type FileResponse struct {
+		Status   string `json:"status"`
+		Filename string `json:"filename"`
+		Path     string `json:"path"`
+		Metadata string `json:"metadata"`
 	}
-	defer dst.Close()
+	responses := make([]FileResponse, 0, len(files))
 
-	// Copy file content
-	if _, err := dst.Write(fileBytes); err != nil {
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
-	}
-
-	// Create metadata
-	mediaType := "unknown"
-	if strings.HasSuffix(strings.ToLower(filename), ".mp3") || strings.HasSuffix(strings.ToLower(filename), ".wav") {
-		mediaType = "audio"
-	} else if strings.HasSuffix(strings.ToLower(filename), ".mp4") || strings.HasSuffix(strings.ToLower(filename), ".mov") {
-		mediaType = "video"
-	} else if strings.HasSuffix(strings.ToLower(filename), ".jpg") || strings.HasSuffix(strings.ToLower(filename), ".jpeg") {
-		mediaType = "photo"
-	}
-
-	// Try to extract timestamp from EXIF data for photos and videos
-	timestamp := time.Now().Format(time.RFC3339)
-	log.Printf("Processing EXIF data for file: %s (type: %s)", filename, mediaType)
-	
-	if mediaType == "photo" || mediaType == "video" {
-		// Use exiftool to extract metadata in JSON format
-		log.Printf("Running exiftool on file: %s", filePath)
-		cmd := exec.Command("exiftool", "-json", filePath)
-		output, err := cmd.Output()
+	// Process each file
+	for _, fileHeader := range files {
+		file, err := fileHeader.Open()
 		if err != nil {
-			log.Printf("Error running exiftool: %v", err)
-		} else {
-			log.Printf("Exiftool output length: %d bytes", len(output))
-			
-			// Parse the JSON output
-			var exifData []map[string]interface{}
-			if err := json.Unmarshal(output, &exifData); err != nil {
-				log.Printf("Error parsing exiftool JSON output: %v", err)
-			} else if len(exifData) == 0 {
-				log.Printf("No EXIF data found in exiftool output")
+			log.Printf("Error opening file %s: %v", fileHeader.Filename, err)
+			continue
+		}
+		defer file.Close()
+
+		// Create file path
+		filename := fileHeader.Filename
+		filePath := filepath.Join(mediaDir, filename)
+
+		// Create a temporary buffer to store the file content
+		// We need this to read EXIF data and then save the file
+		fileBytes, err := io.ReadAll(file)
+		if err != nil {
+			log.Printf("Error reading file %s: %v", filename, err)
+			continue
+		}
+
+		// Create file
+		dst, err := os.Create(filePath)
+		if err != nil {
+			log.Printf("Error creating file %s: %v", filename, err)
+			continue
+		}
+		defer dst.Close()
+
+		// Copy file content
+		if _, err := dst.Write(fileBytes); err != nil {
+			log.Printf("Error saving file %s: %v", filename, err)
+			continue
+		}
+
+		// Create metadata
+		mediaType := "unknown"
+		if strings.HasSuffix(strings.ToLower(filename), ".mp3") || strings.HasSuffix(strings.ToLower(filename), ".wav") {
+			mediaType = "audio"
+		} else if strings.HasSuffix(strings.ToLower(filename), ".mp4") || strings.HasSuffix(strings.ToLower(filename), ".mov") {
+			mediaType = "video"
+		} else if strings.HasSuffix(strings.ToLower(filename), ".jpg") || strings.HasSuffix(strings.ToLower(filename), ".jpeg") {
+			mediaType = "photo"
+		}
+
+		// Try to extract timestamp from EXIF data for photos and videos
+		timestamp := time.Now().Format(time.RFC3339)
+		log.Printf("Processing EXIF data for file: %s (type: %s)", filename, mediaType)
+		
+		if mediaType == "photo" || mediaType == "video" {
+			// Use exiftool to extract metadata in JSON format
+			log.Printf("Running exiftool on file: %s", filePath)
+			cmd := exec.Command("exiftool", "-json", filePath)
+			output, err := cmd.Output()
+			if err != nil {
+				log.Printf("Error running exiftool: %v", err)
 			} else {
-				// Log available tags for debugging
-				log.Printf("Available EXIF tags:")
-				for key := range exifData[0] {
-					log.Printf("  - %s: %v", key, exifData[0][key])
-				}
+				log.Printf("Exiftool output length: %d bytes", len(output))
 				
-				// Try to get DateTimeOriginal first
-				if dateTimeStr, ok := exifData[0]["DateTimeOriginal"].(string); ok && dateTimeStr != "" {
-					log.Printf("Found DateTimeOriginal: %s", dateTimeStr)
-					// Parse the date string (format typically: "YYYY:MM:DD HH:MM:SS")
-					if dateTime, err := time.Parse("2006:01:02 15:04:05", dateTimeStr); err != nil {
-						log.Printf("Error parsing DateTimeOriginal: %v", err)
-					} else {
-						timestamp = dateTime.Format(time.RFC3339)
-						log.Printf("Using DateTimeOriginal as timestamp: %s", timestamp)
-					}
-				} else if createDateStr, ok := exifData[0]["CreateDate"].(string); ok && createDateStr != "" {
-					// Fallback to CreateDate if DateTimeOriginal doesn't exist
-					log.Printf("DateTimeOriginal not found, using CreateDate: %s", createDateStr)
-					if dateTime, err := time.Parse("2006:01:02 15:04:05", createDateStr); err != nil {
-						log.Printf("Error parsing CreateDate: %v", err)
-					} else {
-						timestamp = dateTime.Format(time.RFC3339)
-						log.Printf("Using CreateDate as timestamp: %s", timestamp)
-					}
+				// Parse the JSON output
+				var exifData []map[string]interface{}
+				if err := json.Unmarshal(output, &exifData); err != nil {
+					log.Printf("Error parsing exiftool JSON output: %v", err)
+				} else if len(exifData) == 0 {
+					log.Printf("No EXIF data found in exiftool output")
 				} else {
-					log.Printf("Neither DateTimeOriginal nor CreateDate found in EXIF data")
+					// Log available tags for debugging
+					log.Printf("Available EXIF tags:")
+					for key := range exifData[0] {
+						log.Printf("  - %s: %v", key, exifData[0][key])
+					}
+					
+					// Try to get DateTimeOriginal first
+					if dateTimeStr, ok := exifData[0]["DateTimeOriginal"].(string); ok && dateTimeStr != "" {
+						log.Printf("Found DateTimeOriginal: %s", dateTimeStr)
+						// Parse the date string (format typically: "YYYY:MM:DD HH:MM:SS")
+						if dateTime, err := time.Parse("2006:01:02 15:04:05", dateTimeStr); err != nil {
+							log.Printf("Error parsing DateTimeOriginal: %v", err)
+						} else {
+							timestamp = dateTime.Format(time.RFC3339)
+							log.Printf("Using DateTimeOriginal as timestamp: %s", timestamp)
+						}
+					} else if createDateStr, ok := exifData[0]["CreateDate"].(string); ok && createDateStr != "" {
+						// Fallback to CreateDate if DateTimeOriginal doesn't exist
+						log.Printf("DateTimeOriginal not found, using CreateDate: %s", createDateStr)
+						if dateTime, err := time.Parse("2006:01:02 15:04:05", createDateStr); err != nil {
+							log.Printf("Error parsing CreateDate: %v", err)
+						} else {
+							timestamp = dateTime.Format(time.RFC3339)
+							log.Printf("Using CreateDate as timestamp: %s", timestamp)
+						}
+					} else {
+						log.Printf("Neither DateTimeOriginal nor CreateDate found in EXIF data")
+					}
 				}
 			}
+		} else {
+			log.Printf("Skipping EXIF extraction for non-photo/video file type: %s", mediaType)
 		}
-	} else {
-		log.Printf("Skipping EXIF extraction for non-photo/video file type: %s", mediaType)
-	}
-	
-	log.Printf("Final timestamp for file %s: %s", filename, timestamp)
+		
+		log.Printf("Final timestamp for file %s: %s", filename, timestamp)
 
-	metadata := MediaMetadata{
-		ID:            fmt.Sprintf("%d", time.Now().UnixNano()),
-		Filename:      filename,
-		Path:          "/media/" + filename,
-		Type:          mediaType,
-		Timestamp:     timestamp,
-		Transcription: "",
-		Labels:        []string{},
+		metadata := MediaMetadata{
+			ID:            fmt.Sprintf("%d", time.Now().UnixNano()),
+			Filename:      filename,
+			Path:          "/media/" + filename,
+			Type:          mediaType,
+			Timestamp:     timestamp,
+			Transcription: "",
+			Labels:        []string{},
+		}
+
+		// Save metadata
+		metadataPath := filepath.Join(metadataDir, filename+".json")
+		metadataJSON, err := json.MarshalIndent(metadata, "", "  ")
+		if err != nil {
+			log.Printf("Error creating metadata for %s: %v", filename, err)
+			continue
+		}
+
+		if err := os.WriteFile(metadataPath, metadataJSON, 0644); err != nil {
+			log.Printf("Error saving metadata for %s: %v", filename, err)
+			continue
+		}
+
+		// Add to responses
+		responses = append(responses, FileResponse{
+			Status:   "success",
+			Filename: filename,
+			Path:     "/media/" + filename,
+			Metadata: "/api/metadata/" + filename,
+		})
 	}
 
-	// Save metadata
-	metadataPath := filepath.Join(metadataDir, filename+".json")
-	metadataJSON, err := json.MarshalIndent(metadata, "", "  ")
-	if err != nil {
-		http.Error(w, "Failed to create metadata", http.StatusInternalServerError)
-		return
-	}
-
-	if err := os.WriteFile(metadataPath, metadataJSON, 0644); err != nil {
-		http.Error(w, "Failed to save metadata", http.StatusInternalServerError)
-		return
-	}
-
-	// Return success response
+	// Return success response with all files
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":   "success",
-		"filename": filename,
-		"path":     "/media/" + filename,
-		"metadata": "/api/metadata/" + filename,
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"files":  responses,
+		"count":  len(responses),
 	})
 }
 
