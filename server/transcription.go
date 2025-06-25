@@ -306,8 +306,20 @@ func runWhisperX(audioPath, outputPath string) error {
 	}
 	defer os.RemoveAll(tempDir)
 	
+	// Copy the audio file to the temporary directory
+	audioFileName := filepath.Base(audioPath)
+	tempAudioPath := filepath.Join(tempDir, audioFileName)
+	audioData, err := os.ReadFile(audioPath)
+	if err != nil {
+		return fmt.Errorf("failed to read audio file: %v", err)
+	}
+	
+	if err := os.WriteFile(tempAudioPath, audioData, 0644); err != nil {
+		return fmt.Errorf("failed to copy audio file to temp directory: %v", err)
+	}
+	
 	// Run whisperx
-	cmd := exec.Command("uvx", "whisperx", audioPath, "--output_dir", tempDir, "--output_format", "json")
+	cmd := exec.Command("podman", "run",  "-it", "-v", "\"" + tempDir + ":/app:Z\"", "ghcr.io/jim60105/whisperx:base-en", "--", "--output_format", "json", "--compute_type", "int8", "/app/" + audioFileName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("whisperx error: %v, output: %s", err, string(output))
@@ -331,19 +343,73 @@ func runWhisperX(audioPath, outputPath string) error {
 		return fmt.Errorf("no JSON output found from whisperx")
 	}
 	
-	// Read the whisperx output
-	data, err := os.ReadFile(jsonFile)
+	// Copy the JSON file directly to the output path
+	jsonData, err := os.ReadFile(jsonFile)
 	if err != nil {
 		return fmt.Errorf("failed to read whisperx output: %v", err)
+	}
+	
+	if err := os.WriteFile(outputPath, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write transcript file: %v", err)
+	}
+	
+	return nil
+}
+
+// Update metadata file with transcript information
+func updateMetadataWithTranscript(filename, transcriptPath string) error {
+	// Read the transcript file
+	data, err := os.ReadFile(transcriptPath)
+	if err != nil {
+		return fmt.Errorf("failed to read transcript file: %v", err)
 	}
 	
 	// Parse the whisperx output to extract segments
 	var whisperOutput map[string]interface{}
 	if err := json.Unmarshal(data, &whisperOutput); err != nil {
-		return fmt.Errorf("failed to parse whisperx output: %v", err)
+		// If it's not in whisperx format, try our format
+		var transcriptEntries []TranscriptEntry
+		if err := json.Unmarshal(data, &transcriptEntries); err != nil {
+			return fmt.Errorf("failed to parse transcript: %v", err)
+		}
+		
+		// Read the metadata file
+		metadataPath := filepath.Join(metadataDir, filename+".json")
+		metadataData, err := os.ReadFile(metadataPath)
+		if err != nil {
+			return fmt.Errorf("failed to read metadata file: %v", err)
+		}
+		
+		var metadata MediaMetadata
+		if err := json.Unmarshal(metadataData, &metadata); err != nil {
+			return fmt.Errorf("failed to parse metadata: %v", err)
+		}
+		
+		// Update metadata with transcript
+		metadata.Transcripts = transcriptEntries
+		
+		// Create a full transcription text
+		var fullText strings.Builder
+		for _, entry := range transcriptEntries {
+			fullText.WriteString(entry.Text)
+			fullText.WriteString(" ")
+		}
+		metadata.Transcription = fullText.String()
+		
+		// Write updated metadata back to file
+		updatedData, err := json.MarshalIndent(metadata, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal updated metadata: %v", err)
+		}
+		
+		if err := os.WriteFile(metadataPath, updatedData, 0644); err != nil {
+			return fmt.Errorf("failed to write updated metadata: %v", err)
+		}
+		
+		return nil
 	}
 	
-	// Convert to our transcript format
+	// Convert whisperx format to our transcript format
 	segments, ok := whisperOutput["segments"].([]interface{})
 	if !ok {
 		return fmt.Errorf("invalid whisperx output format")
@@ -368,32 +434,6 @@ func runWhisperX(audioPath, outputPath string) error {
 		}
 		
 		transcriptEntries = append(transcriptEntries, entry)
-	}
-	
-	// Write the transcript to the output file
-	transcriptData, err := json.MarshalIndent(transcriptEntries, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal transcript: %v", err)
-	}
-	
-	if err := os.WriteFile(outputPath, transcriptData, 0644); err != nil {
-		return fmt.Errorf("failed to write transcript file: %v", err)
-	}
-	
-	return nil
-}
-
-// Update metadata file with transcript information
-func updateMetadataWithTranscript(filename, transcriptPath string) error {
-	// Read the transcript file
-	data, err := os.ReadFile(transcriptPath)
-	if err != nil {
-		return fmt.Errorf("failed to read transcript file: %v", err)
-	}
-	
-	var transcriptEntries []TranscriptEntry
-	if err := json.Unmarshal(data, &transcriptEntries); err != nil {
-		return fmt.Errorf("failed to parse transcript: %v", err)
 	}
 	
 	// Read the metadata file
