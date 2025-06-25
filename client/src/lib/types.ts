@@ -1,3 +1,12 @@
+export interface TranscriptEntry {
+  start: number;
+  end: number;
+  text: string;
+  segment: number;
+  speaker?: string;
+  metadata?: string;
+}
+
 export interface MediaItem {
   id: string;
   type: 'photo' | 'audio' | 'video';
@@ -6,6 +15,7 @@ export interface MediaItem {
   filename: string;
   transcription: string;
   labels: string[];
+  transcripts?: TranscriptEntry[];
 }
 
 export interface TimelineItem {
@@ -21,4 +31,11 @@ export interface TimelineItem {
 export interface Label {
   id: string;
   text: string;
+}
+
+export interface TranscriptionStatus {
+  filename: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  error?: string;
+  timestamp: string;
 }

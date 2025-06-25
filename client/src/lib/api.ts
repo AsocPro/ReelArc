@@ -1,4 +1,4 @@
-import type { MediaItem } from './types';
+import type { MediaItem, TranscriptionStatus } from './types';
 
 /**
  * Fetches media items from the API
@@ -13,6 +13,23 @@ export async function fetchMediaItems(): Promise<MediaItem[]> {
     return await response.json();
   } catch (error) {
     console.error('Error fetching media items:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetches transcription status from the API
+ * @returns Promise with array of transcription statuses
+ */
+export async function fetchTranscriptionStatus(): Promise<TranscriptionStatus[]> {
+  try {
+    const response = await fetch('/api/transcription/status');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch transcription status: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching transcription status:', error);
     return [];
   }
 }

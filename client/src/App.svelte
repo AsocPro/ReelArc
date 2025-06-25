@@ -3,6 +3,7 @@
   import Timeline from './components/Timeline.svelte';
   import SidePanel from './components/SidePanel.svelte';
   import UploadForm from './components/UploadForm.svelte';
+  import TranscriptionStatus from './components/TranscriptionStatus.svelte';
   import type { MediaItem } from './lib/types';
   import { fetchMediaItems } from './lib/api';
   
@@ -11,6 +12,7 @@
   let sidePanelOpen = false;
   let loading = true;
   let error = '';
+  let activeTab = 'timeline'; // 'timeline' or 'transcription'
   
   onMount(async () => {
     await loadMediaItems();
@@ -51,6 +53,10 @@
     // Refresh media items after successful upload
     loadMediaItems();
   }
+  
+  function setActiveTab(tab: string) {
+    activeTab = tab;
+  }
 </script>
 
 <main>
@@ -64,19 +70,41 @@
       <UploadForm on:upload-success={handleUploadSuccess} />
     </div>
     
-    <div class="timeline-section">
-      <h2>Media Timeline</h2>
-      {#if loading}
-        <div class="loading">Loading media data...</div>
-      {:else if error}
-        <div class="error">{error}</div>
-      {:else}
-        <Timeline 
-          data={mediaItems} 
-          on:item-select={handleItemSelect} 
-        />
-      {/if}
+    <div class="tabs">
+      <button 
+        class="tab-button" 
+        class:active={activeTab === 'timeline'} 
+        on:click={() => setActiveTab('timeline')}
+      >
+        Media Timeline
+      </button>
+      <button 
+        class="tab-button" 
+        class:active={activeTab === 'transcription'} 
+        on:click={() => setActiveTab('transcription')}
+      >
+        Transcription Status
+      </button>
     </div>
+    
+    {#if activeTab === 'timeline'}
+      <div class="timeline-section">
+        {#if loading}
+          <div class="loading">Loading media data...</div>
+        {:else if error}
+          <div class="error">{error}</div>
+        {:else}
+          <Timeline 
+            data={mediaItems} 
+            on:item-select={handleItemSelect} 
+          />
+        {/if}
+      </div>
+    {:else if activeTab === 'transcription'}
+      <div class="transcription-section">
+        <TranscriptionStatus />
+      </div>
+    {/if}
   </div>
   
   <SidePanel 
@@ -122,7 +150,7 @@
       grid-template-columns: 1fr;
     }
     
-    .timeline-section {
+    .timeline-section, .transcription-section {
       grid-column: 1 / -1;
     }
   }
@@ -143,5 +171,31 @@
   .error {
     background-color: #ffebee;
     color: #d32f2f;
+  }
+  
+  .tabs {
+    display: flex;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .tab-button {
+    padding: 0.75rem 1.5rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #666;
+    transition: all 0.2s ease;
+  }
+  
+  .tab-button:hover {
+    color: #2196f3;
+  }
+  
+  .tab-button.active {
+    color: #2196f3;
+    border-bottom-color: #2196f3;
   }
 </style>
