@@ -58,6 +58,25 @@
       addLabel();
     }
   }
+  
+  // Format time in seconds to MM:SS format
+  function formatTime(seconds: number): string {
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Seek to a specific time in the audio/video player
+  function seekToTime(seconds: number): void {
+    if (!item) return;
+    
+    // Find the audio or video element
+    const mediaElement = document.querySelector('.media-preview audio, .media-preview video') as HTMLMediaElement;
+    if (mediaElement) {
+      mediaElement.currentTime = seconds;
+      mediaElement.play().catch(err => console.error('Failed to play media:', err));
+    }
+  }
 </script>
 
 <div class="side-panel" class:open>
@@ -107,7 +126,19 @@
           </div>
         {/if}
         
-        {#if item.transcription}
+        {#if item.transcripts && item.transcripts.length > 0}
+          <div class="info-item transcription">
+            <span class="label">Transcript:</span>
+            <div class="value transcript-container">
+              {#each item.transcripts as entry}
+                <div class="transcript-entry" on:click={() => seekToTime(entry.start)}>
+                  <span class="transcript-time">{formatTime(entry.start)} - {formatTime(entry.end)}</span>
+                  <span class="transcript-text">{entry.text}</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {:else if item.transcription}
           <div class="info-item transcription">
             <span class="label">Transcription:</span>
             <div class="value transcription-text">{item.transcription}</div>
@@ -261,6 +292,41 @@
     max-height: 150px;
     overflow-y: auto;
     white-space: pre-wrap;
+  }
+  
+  .transcript-container {
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    max-height: 250px;
+    overflow-y: auto;
+  }
+  
+  .transcript-entry {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #e0e0e0;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  
+  .transcript-entry:last-child {
+    border-bottom: none;
+  }
+  
+  .transcript-entry:hover {
+    background-color: #e3f2fd;
+  }
+  
+  .transcript-time {
+    display: block;
+    font-size: 0.75rem;
+    color: #666;
+    margin-bottom: 0.25rem;
+  }
+  
+  .transcript-text {
+    display: block;
   }
   
   .labels-container {
