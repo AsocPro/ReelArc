@@ -1,18 +1,19 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Timeline from './components/Timeline.svelte';
-  import SidePanel from './components/SidePanel.svelte';
+
   import UploadForm from './components/UploadForm.svelte';
   import TranscriptionStatus from './components/TranscriptionStatus.svelte';
+  import MediaDetails from './components/MediaDetails.svelte';
   import type { MediaItem } from './lib/types';
   import { fetchMediaItems } from './lib/api';
   
   let mediaItems: MediaItem[] = [];
   let selectedItem: MediaItem | null = null;
-  let sidePanelOpen = false;
   let loading = true;
   let error = '';
-  let activeTab = 'timeline'; // 'timeline' or 'transcription'
+  let activeTab = 'timeline'; // 'timeline', 'transcription', 'upload', or 'details'
+  let timelineComponent: any;
   
   onMount(async () => {
     await loadMediaItems();
@@ -32,12 +33,11 @@
   
   function handleItemSelect(event: CustomEvent<MediaItem>) {
     selectedItem = event.detail;
-    sidePanelOpen = true;
+    // Switch to the details tab
+    setActiveTab('details');
   }
   
-  function handleSidePanelClose() {
-    sidePanelOpen = false;
-  }
+
   
   function handleItemUpdate(event: CustomEvent<MediaItem>) {
     const updatedItem = event.detail;
@@ -57,6 +57,12 @@
   function setActiveTab(tab: string) {
     activeTab = tab;
   }
+  
+  function handleCenterPlayhead() {
+    if (timelineComponent && typeof timelineComponent.centerOnPlayhead === 'function') {
+      timelineComponent.centerOnPlayhead();
+    }
+  }
 </script>
 
 <main>
@@ -65,11 +71,6 @@
   </header>
   
   <div class="container">
-    <div class="upload-section">
-      <h2>Upload Media</h2>
-      <UploadForm on:upload-success={handleUploadSuccess} />
-    </div>
-    
     <div class="tabs">
       <button 
         class="tab-button" 
@@ -80,6 +81,21 @@
       </button>
       <button 
         class="tab-button" 
+        class:active={activeTab === 'upload'} 
+        on:click={() => setActiveTab('upload')}
+      >
+        Upload Media
+      </button>
+      <button 
+        class="tab-button" 
+        class:active={activeTab === 'details'} 
+        on:click={() => setActiveTab('details')}
+        disabled={!selectedItem}
+      >
+        Media Details
+      </button>
+      <button 
+        class="tab-button" 
         class:active={activeTab === 'transcription'} 
         on:click={() => setActiveTab('transcription')}
       >
@@ -87,32 +103,43 @@
       </button>
     </div>
     
-    {#if activeTab === 'timeline'}
-      <div class="timeline-section">
-        {#if loading}
-          <div class="loading">Loading media data...</div>
-        {:else if error}
-          <div class="error">{error}</div>
-        {:else}
-          <Timeline 
-            data={mediaItems} 
-            on:item-select={handleItemSelect} 
+    <div class="content-section">
+      {#if activeTab === 'timeline'}
+        <div class="timeline-section">
+          {#if loading}
+            <div class="loading">Loading media data...</div>
+          {:else if error}
+            <div class="error">{error}</div>
+          {:else}
+            <Timeline 
+              data={mediaItems} 
+              on:item-select={handleItemSelect}
+              on:center-playhead
+              bind:this={timelineComponent}
+            />
+          {/if}
+        </div>
+      {:else if activeTab === 'upload'}
+        <div class="upload-section">
+          <UploadForm on:upload-success={handleUploadSuccess} />
+        </div>
+      {:else if activeTab === 'details'}
+        <div class="details-section">
+          <MediaDetails 
+            item={selectedItem} 
+            on:update={handleItemUpdate}
+            on:center-playhead={handleCenterPlayhead}
           />
-        {/if}
-      </div>
-    {:else if activeTab === 'transcription'}
-      <div class="transcription-section">
-        <TranscriptionStatus />
-      </div>
-    {/if}
+        </div>
+      {:else if activeTab === 'transcription'}
+        <div class="transcription-section">
+          <TranscriptionStatus />
+        </div>
+      {/if}
+    </div>
   </div>
   
-  <SidePanel 
-    item={selectedItem} 
-    open={sidePanelOpen}
-    on:close={handleSidePanelClose}
-    on:update={handleItemUpdate}
-  />
+
 </main>
 
 <style>
@@ -140,19 +167,25 @@
   }
   
   .container {
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-gap: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
   
-  @media (min-width: 768px) {
-    .container {
-      grid-template-columns: 1fr;
-    }
-    
-    .timeline-section, .transcription-section {
-      grid-column: 1 / -1;
-    }
+  .content-section {
+    flex: 1;
+    min-height: 400px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  
+  .timeline-section, 
+  .upload-section, 
+  .details-section, 
+  .transcription-section {
+    height: 100%;
+    min-height: 400px;
   }
   
   h2 {
@@ -175,7 +208,7 @@
   
   .tabs {
     display: flex;
-    margin-bottom: 1rem;
+    margin-bottom: 0;
     border-bottom: 1px solid #eee;
   }
   
@@ -190,12 +223,17 @@
     transition: all 0.2s ease;
   }
   
-  .tab-button:hover {
+  .tab-button:hover:not(:disabled) {
     color: #2196f3;
   }
   
   .tab-button.active {
     color: #2196f3;
     border-bottom-color: #2196f3;
+  }
+  
+  .tab-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

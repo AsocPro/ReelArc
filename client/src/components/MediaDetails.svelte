@@ -1,15 +1,14 @@
 <script lang="ts">
-  import { createEventDispatcher, onDestroy } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
   import type { MediaItem } from '../lib/types';
   import { updateLabels } from '../lib/api';
   import { mediaPlayback } from '../lib/stores';
   
   export let item: MediaItem | null = null;
-  export let open = false;
   
   const dispatch = createEventDispatcher<{
-    'close': void;
     'update': MediaItem;
+    'center-playhead': void;
   }>();
   
   let newLabel = '';
@@ -29,7 +28,7 @@
   }
   
   // Clean up any existing interval when component is destroyed
-  onDestroy(() => {
+  function cleanup() {
     if (playbackInterval) {
       clearInterval(playbackInterval);
       playbackInterval = null;
@@ -42,10 +41,6 @@
       startTimestamp: null,
       currentTime: 0
     });
-  });
-  
-  function closePanel() {
-    dispatch('close');
   }
   
   function addLabel() {
@@ -187,164 +182,121 @@
   }
 </script>
 
-<div class="side-panel" class:open>
-  <div class="panel-header">
-    <h2>Media Details</h2>
-    <button class="close-btn" on:click={closePanel}>×</button>
-  </div>
-  
-  {#if item}
-    <div class="panel-content">
-      <div class="media-preview">
-        {#if item.type === 'photo'}
-          <img src={`/media/${item.filename}`} alt={item.filename} />
-        {:else if item.type === 'audio'}
-          <audio controls>
-            <source src={`/media/${item.filename}`} type="audio/mpeg">
-            Your browser does not support the audio element.
-          </audio>
-        {:else if item.type === 'video'}
-          <video controls>
-            <source src={`/media/${item.filename}`} type="video/mp4">
-            Your browser does not support the video element.
-          </video>
-        {/if}
+{#if item}
+  <div class="media-details">
+    <div class="media-preview">
+      {#if item.type === 'photo'}
+        <img src={`/media/${item.filename}`} alt={item.filename} />
+      {:else if item.type === 'audio'}
+        <audio controls>
+          <source src={`/media/${item.filename}`} type="audio/mpeg">
+          Your browser does not support the audio element.
+        </audio>
+      {:else if item.type === 'video'}
+        <video controls>
+          <source src={`/media/${item.filename}`} type="video/mp4">
+          Your browser does not support the video element.
+        </video>
+      {/if}
+    </div>
+    
+    <div class="media-info">
+      <div class="info-item">
+        <span class="label">Filename:</span>
+        <span class="value">{item.filename}</span>
       </div>
       
-      <div class="media-info">
+      <div class="info-item">
+        <span class="label">Type:</span>
+        <span class="value">{item.type}</span>
+      </div>
+      
+      <div class="info-item">
+        <span class="label">Timestamp:</span>
+        <span class="value">{new Date(item.timestamp).toLocaleString()}</span>
+      </div>
+      
+      {#if item.duration}
         <div class="info-item">
-          <span class="label">Filename:</span>
-          <span class="value">{item.filename}</span>
+          <span class="label">Duration:</span>
+          <span class="value">{item.duration} seconds</span>
         </div>
-        
-        <div class="info-item">
-          <span class="label">Type:</span>
-          <span class="value">{item.type}</span>
-        </div>
-        
-        <div class="info-item">
-          <span class="label">Timestamp:</span>
-          <span class="value">{new Date(item.timestamp).toLocaleString()}</span>
-        </div>
-        
-        {#if item.duration}
-          <div class="info-item">
-            <span class="label">Duration:</span>
-            <span class="value">{item.duration} seconds</span>
+      {/if}
+      
+      {#if item.transcripts && item.transcripts.length > 0}
+        <div class="info-item transcription">
+          <span class="label">Transcript:</span>
+          <div class="value transcript-container">
+            {#each item.transcripts as entry}
+              <div class="transcript-entry" on:click={() => seekToTime(entry.start)}>
+                <span class="transcript-time">{formatTime(entry.start)} - {formatTime(entry.end)}</span>
+                <span class="transcript-text">{entry.text}</span>
+              </div>
+            {/each}
           </div>
-        {/if}
-        
-        {#if item.transcripts && item.transcripts.length > 0}
-          <div class="info-item transcription">
-            <span class="label">Transcript:</span>
-            <div class="value transcript-container">
-              {#each item.transcripts as entry}
-                <div class="transcript-entry" on:click={() => seekToTime(entry.start)}>
-                  <span class="transcript-time">{formatTime(entry.start)} - {formatTime(entry.end)}</span>
-                  <span class="transcript-text">{entry.text}</span>
+        </div>
+      {:else if item.transcription}
+        <div class="info-item transcription">
+          <span class="label">Transcription:</span>
+          <div class="value transcription-text">{item.transcription}</div>
+        </div>
+      {/if}
+      
+      <div class="info-item labels-section">
+        <span class="label">Labels:</span>
+        <div class="labels-container">
+          {#if labels.length === 0}
+            <span class="no-labels">No labels</span>
+          {:else}
+            <div class="labels-list">
+              {#each labels as label, i}
+                <div class="label-item">
+                  <span>{label}</span>
+                  <button class="remove-label" on:click={() => removeLabel(i)}>×</button>
                 </div>
               {/each}
             </div>
+          {/if}
+          
+          <div class="add-label">
+            <input 
+              type="text" 
+              bind:value={newLabel} 
+              placeholder="Add new label" 
+              on:keydown={handleKeydown}
+            />
+            <button on:click={addLabel}>Add</button>
           </div>
-        {:else if item.transcription}
-          <div class="info-item transcription">
-            <span class="label">Transcription:</span>
-            <div class="value transcription-text">{item.transcription}</div>
-          </div>
-        {/if}
-        
-        <div class="info-item labels-section">
-          <span class="label">Labels:</span>
-          <div class="labels-container">
-            {#if labels.length === 0}
-              <span class="no-labels">No labels</span>
-            {:else}
-              <div class="labels-list">
-                {#each labels as label, i}
-                  <div class="label-item">
-                    <span>{label}</span>
-                    <button class="remove-label" on:click={() => removeLabel(i)}>×</button>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-            
-            <div class="add-label">
-              <input 
-                type="text" 
-                bind:value={newLabel} 
-                placeholder="Add new label" 
-                on:keydown={handleKeydown}
-              />
-              <button on:click={addLabel}>Add</button>
-            </div>
-            
-            <button class="save-btn" on:click={saveLabels} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Labels'}
-            </button>
-          </div>
+          
+          <button class="save-btn" on:click={saveLabels} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Labels'}
+          </button>
         </div>
       </div>
     </div>
-  {:else}
-    <div class="panel-content empty">
-      <p>Select an item from the timeline to view details</p>
-    </div>
-  {/if}
-</div>
+  </div>
+{:else}
+  <div class="empty-state">
+    <p>Select an item from the timeline to view details</p>
+  </div>
+{/if}
 
 <style>
-  .side-panel {
-    position: fixed;
-    top: 0;
-    right: -400px;
-    width: 380px;
-    height: 100vh;
-    background-color: white;
-    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
-    transition: right 0.3s ease;
-    z-index: 1000;
+  .media-details {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-  }
-  
-  .side-panel.open {
-    right: 0;
-  }
-  
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem;
-    border-bottom: 1px solid #eee;
-  }
-  
-  .panel-header h2 {
-    margin: 0;
-    font-size: 1.25rem;
-  }
-  
-  .close-btn {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: #666;
-  }
-  
-  .panel-content {
-    flex: 1;
+    height: 100%;
     overflow-y: auto;
     padding: 1rem;
   }
   
-  .panel-content.empty {
+  .empty-state {
     display: flex;
     justify-content: center;
     align-items: center;
+    height: 100%;
     color: #999;
+    font-style: italic;
   }
   
   .media-preview {

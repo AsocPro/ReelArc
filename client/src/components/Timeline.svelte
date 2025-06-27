@@ -11,6 +11,7 @@
   
   const dispatch = createEventDispatcher<{
     'item-select': MediaItem;
+    'center-playhead': void;
   }>();
   
   let container: HTMLElement;
@@ -105,8 +106,8 @@
     
     // Initialize an empty timeline
     const options = {
-      height: '300px',
-      minHeight: '300px',
+      height: '100%',
+      minHeight: '400px',
       stack: true,
       showCurrentTime: true,
       zoomable: true,
@@ -249,6 +250,26 @@
       console.error('Error updating playhead position:', err);
     }
   }
+  
+  // Center the timeline view on the playhead
+  export function centerOnPlayhead() {
+    if (!timeline || !playheadLine) return;
+    
+    try {
+      const playheadTime = timeline.getCustomTime(playheadLine);
+      if (playheadTime) {
+        // Center the timeline on the playhead time with some padding
+        const windowTime = 60 * 1000; // 1 minute window
+        const start = new Date(playheadTime.getTime() - windowTime / 2);
+        const end = new Date(playheadTime.getTime() + windowTime / 2);
+        
+        timeline.setWindow(start, end, { animation: true });
+        dispatch('center-playhead');
+      }
+    } catch (err) {
+      console.error('Error centering on playhead:', err);
+    }
+  }
 </script>
 
 <div class="timeline-container">
@@ -266,10 +287,9 @@
 <style>
   .timeline-container {
     width: 100%;
-    height: 300px;
-    margin: 1rem 0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    height: 100%;
+    min-height: 400px;
+    border: none;
     overflow: hidden;
     position: relative;
   }

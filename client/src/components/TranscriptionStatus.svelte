@@ -95,8 +95,8 @@
   .transcription-status {
     padding: 1rem;
     background-color: white;
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    height: 100%;
+    overflow-y: auto;
   }
   
   h2 {
