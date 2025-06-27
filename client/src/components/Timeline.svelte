@@ -135,8 +135,10 @@
         const startDate = new Date(item.timestamp);
         const endDate = new Date(startDate.getTime() + item.duration * 1000);
         timelineItem.end = endDate.toISOString();
+      } else {
+        timelineItem.end = item.timestamp;
       }
-      
+
       return timelineItem;
     });
   }

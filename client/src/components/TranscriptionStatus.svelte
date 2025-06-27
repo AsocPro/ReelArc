@@ -24,7 +24,8 @@
   async function loadTranscriptionStatus() {
     try {
       loading = true;
-      statuses = await fetchTranscriptionStatus();
+      const result = await fetchTranscriptionStatus();
+      statuses = result || [];
       loading = false;
     } catch (err) {
       loading = false;
@@ -60,11 +61,11 @@
     {loading ? 'Refreshing...' : 'Refresh'}
   </button>
   
-  {#if loading && statuses.length === 0}
+  {#if loading && (!statuses || statuses.length === 0)}
     <div class="loading">Loading transcription status...</div>
   {:else if error}
     <div class="error">{error}</div>
-  {:else if statuses.length === 0}
+  {:else if !statuses || statuses.length === 0}
     <div class="empty">No transcription jobs found</div>
   {:else}
     <div class="status-list">

@@ -27,7 +27,8 @@ export async function fetchTranscriptionStatus(): Promise<TranscriptionStatus[]>
     if (!response.ok) {
       throw new Error(`Failed to fetch transcription status: ${response.statusText}`);
     }
-    return await response.json();
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching transcription status:', error);
     return [];

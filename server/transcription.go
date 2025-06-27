@@ -311,8 +311,19 @@ func runWhisperX(audioPath, outputPath string) error {
         log.Fatal(err)
 	}
 	
+	audioFileName := filepath.Base(audioPath)
+	tempAudioPath := filepath.Join(tempDir, audioFileName)
+	audioData, err := os.ReadFile(audioPath)
+	if err != nil {
+		return fmt.Errorf("failed to read audio file error: %v", err)
+	}
+
+	if err := os.WriteFile(tempAudioPath, audioData, 0666); err != nil {
+		return fmt.Errorf("failed to read audio file error: %v", err)
+	}
+
 	// Run whisperx
-	cmd := exec.Command("podman", "run",  "-v",  tempDir + ":/app:Z", "ghcr.io/jim60105/whisperx:base-en", "--", "--output_format", "json", "--compute_type", "int8", audioPath)
+	cmd := exec.Command("podman", "run",  "-v",  tempDir + ":/app:Z", "ghcr.io/jim60105/whisperx:base-en", "--", "--output_format", "json", "--compute_type", "int8", audioFileName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("whisperx error: %v, output: %s", err, string(output))
