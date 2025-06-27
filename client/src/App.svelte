@@ -12,7 +12,7 @@
   let selectedItem: MediaItem | null = null;
   let loading = true;
   let error = '';
-  let activeTab = 'timeline'; // 'timeline', 'transcription', 'upload', or 'details'
+  let activeTab = 'upload'; // 'transcription', 'upload', or 'details'
   let timelineComponent: any;
   
   onMount(async () => {
@@ -71,14 +71,23 @@
   </header>
   
   <div class="container">
+    <!-- Timeline component always visible at the top -->
+    <div class="timeline-container">
+      {#if loading}
+        <div class="loading">Loading media data...</div>
+      {:else if error}
+        <div class="error">{error}</div>
+      {:else}
+        <Timeline 
+          data={mediaItems} 
+          on:item-select={handleItemSelect}
+          on:center-playhead
+          bind:this={timelineComponent}
+        />
+      {/if}
+    </div>
+
     <div class="tabs">
-      <button 
-        class="tab-button" 
-        class:active={activeTab === 'timeline'} 
-        on:click={() => setActiveTab('timeline')}
-      >
-        Media Timeline
-      </button>
       <button 
         class="tab-button" 
         class:active={activeTab === 'upload'} 
@@ -104,22 +113,7 @@
     </div>
     
     <div class="content-section">
-      {#if activeTab === 'timeline'}
-        <div class="timeline-section">
-          {#if loading}
-            <div class="loading">Loading media data...</div>
-          {:else if error}
-            <div class="error">{error}</div>
-          {:else}
-            <Timeline 
-              data={mediaItems} 
-              on:item-select={handleItemSelect}
-              on:center-playhead
-              bind:this={timelineComponent}
-            />
-          {/if}
-        </div>
-      {:else if activeTab === 'upload'}
+      {#if activeTab === 'upload'}
         <div class="upload-section">
           <UploadForm on:upload-success={handleUploadSuccess} />
         </div>
@@ -180,7 +174,14 @@
     overflow: hidden;
   }
   
-  .timeline-section, 
+  .timeline-container {
+    margin-bottom: 1rem;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    overflow: hidden;
+    min-height: 200px;
+  }
+  
   .upload-section, 
   .details-section, 
   .transcription-section {
