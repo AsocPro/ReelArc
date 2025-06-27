@@ -4,6 +4,8 @@
   import 'vis-timeline/styles/vis-timeline-graph2d.css';
   import type { MediaItem, TimelineItem } from '../lib/types';
   import { fetchMediaItems } from '../lib/api';
+  import { mediaPlayback } from '../lib/stores';
+  import { get } from 'svelte/store';
   
   export let data: MediaItem[] = [];
   
@@ -16,6 +18,8 @@
   let timelineItems: TimelineItem[] = [];
   let loading = true;
   let error = '';
+  let playheadLine: any = null;
+  let unsubscribe: () => void;
   
   // Watch for changes in data and container
   $: if (data.length > 0 && container && !timeline) {
@@ -33,32 +37,57 @@
     initializeTimeline();
   }
   
-  onMount(async () => {
-    // If no data is provided, fetch it
-    if (data.length === 0) {
-      try {
-        loading = true;
-        data = await fetchMediaItems();
-      } catch (err) {
-        loading = false;
-        error = 'Failed to load media items';
-        console.error(error, err);
+  onMount(() => {
+    // Set up async initialization
+    const initialize = async () => {
+      // If no data is provided, fetch it
+      if (data.length === 0) {
+        try {
+          loading = true;
+          data = await fetchMediaItems();
+        } catch (err) {
+          loading = false;
+          error = 'Failed to load media items';
+          console.error(error, err);
+        }
       }
-    }
+      
+      // Wait for the next tick to ensure container is rendered
+      setTimeout(() => {
+        if (container && data.length > 0) {
+          initializeTimeline();
+        } else if (data.length > 0) {
+          // If we have data but no container yet, we'll wait for the container to be bound
+          loading = false;
+        }
+      }, 0);
+    };
     
-    // Wait for the next tick to ensure container is rendered
-    setTimeout(() => {
-      if (container && data.length > 0) {
-        initializeTimeline();
-      } else if (data.length > 0) {
-        // If we have data but no container yet, we'll wait for the container to be bound
-        loading = false;
+    // Start initialization
+    initialize();
+    
+    // Subscribe to media playback store to update playhead
+    unsubscribe = mediaPlayback.subscribe(state => {
+      if (timeline && container) {
+        if (state.isPlaying && !playheadLine) {
+          // Create playhead marker if it doesn't exist
+          createPlayheadMarker();
+        }
+        
+        // Update playhead position
+        updatePlayheadPosition(state);
       }
-    }, 0);
+    });
     
+    // Return a cleanup function
     return () => {
       if (timeline) {
         timeline.destroy();
+      }
+      
+      // Unsubscribe from store when component is destroyed
+      if (unsubscribe) {
+        unsubscribe();
       }
     };
   });
@@ -112,6 +141,13 @@
       
       // Set loading to false now that timeline is initialized
       loading = false;
+      
+      // Check if we need to create a playhead marker
+      const playbackState = get(mediaPlayback);
+      if (playbackState.isPlaying) {
+        createPlayheadMarker();
+        updatePlayheadPosition(playbackState);
+      }
     } catch (err) {
       console.error('Failed to initialize timeline:', err);
       error = 'Failed to initialize timeline';
@@ -169,6 +205,48 @@
       timeline.fit();
     } catch (err) {
       console.error('Error updating timeline:', err);
+    }
+  }
+  
+  // Create a custom playhead marker line
+  function createPlayheadMarker() {
+    if (!timeline) return;
+    
+    // Remove existing playhead if it exists
+    if (playheadLine) {
+      timeline.removeCustomTime(playheadLine);
+      playheadLine = null;
+    }
+    
+    // Create a new custom time line
+    playheadLine = 'playhead-' + Date.now(); // Unique ID
+    try {
+      timeline.addCustomTime(new Date(), playheadLine);
+      timeline.setCustomTimeMarker('Media Playhead', playheadLine, false);
+      
+      // Style the playhead line
+      const playheadElement = container.querySelector(`.vis-custom-time.${playheadLine}`);
+      if (playheadElement) {
+        playheadElement.classList.add('playhead-marker');
+      }
+    } catch (err) {
+      console.error('Error creating playhead marker:', err);
+    }
+  }
+  
+  // Update the playhead position based on media playback
+  function updatePlayheadPosition(playbackState: any) {
+    if (!timeline || !playheadLine || !playbackState.isPlaying || !playbackState.startTimestamp) return;
+    
+    try {
+      // Calculate the current timestamp based on the start timestamp and current playback time
+      const startTime = new Date(playbackState.startTimestamp);
+      const currentTime = new Date(startTime.getTime() + (playbackState.currentTime * 1000));
+      
+      // Update the custom time line position
+      timeline.setCustomTime(currentTime, playheadLine);
+    } catch (err) {
+      console.error('Error updating playhead position:', err);
     }
   }
 </script>
@@ -233,5 +311,22 @@
   :global(.item-default) {
     background-color: #e0e0e0 !important;
     border-color: #9e9e9e !important;
+  }
+  
+  :global(.playhead-marker) {
+    border-color: #ff5722 !important;
+    border-width: 2px !important;
+    z-index: 10 !important;
+  }
+  
+  :global(.vis-custom-time.playhead-marker::after) {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -5px;
+    width: 10px;
+    height: 10px;
+    background-color: #ff5722;
+    border-radius: 50%;
   }
 </style>

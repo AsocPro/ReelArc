@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onDestroy } from 'svelte';
   import type { MediaItem } from '../lib/types';
   import { updateLabels } from '../lib/api';
+  import { mediaPlayback } from '../lib/stores';
   
   export let item: MediaItem | null = null;
   export let open = false;
@@ -14,10 +15,34 @@
   let newLabel = '';
   let labels: string[] = [];
   let saving = false;
+  let mediaElement: HTMLMediaElement | null = null;
+  let playbackInterval: number | null = null;
   
   $: if (item) {
     labels = [...item.labels];
+    
+    // Set up media tracking when item changes
+    // Use setTimeout to ensure DOM is updated
+    setTimeout(() => {
+      setupMediaTracking();
+    }, 0);
   }
+  
+  // Clean up any existing interval when component is destroyed
+  onDestroy(() => {
+    if (playbackInterval) {
+      clearInterval(playbackInterval);
+      playbackInterval = null;
+    }
+    
+    // Reset media playback state when component is destroyed
+    mediaPlayback.set({
+      isPlaying: false,
+      currentItem: null,
+      startTimestamp: null,
+      currentTime: 0
+    });
+  });
   
   function closePanel() {
     dispatch('close');
@@ -71,10 +96,90 @@
     if (!item) return;
     
     // Find the audio or video element
-    const mediaElement = document.querySelector('.media-preview audio, .media-preview video') as HTMLMediaElement;
+    const element = document.querySelector('.media-preview audio, .media-preview video') as HTMLMediaElement;
+    if (element) {
+      element.currentTime = seconds;
+      element.play().catch(err => console.error('Failed to play media:', err));
+      
+      // Update the media playback store
+      mediaPlayback.update(state => ({
+        ...state,
+        currentTime: seconds,
+        isPlaying: true
+      }));
+    }
+  }
+  
+  // Setup media playback tracking
+  function setupMediaTracking(): void {
+    if (!item || !item.timestamp) return;
+    
+    // Find the audio or video element
+    mediaElement = document.querySelector('.media-preview audio, .media-preview video') as HTMLMediaElement;
+    
     if (mediaElement) {
-      mediaElement.currentTime = seconds;
-      mediaElement.play().catch(err => console.error('Failed to play media:', err));
+      // Set up event listeners for media playback
+      mediaElement.addEventListener('play', () => {
+        // Start tracking playback
+        mediaPlayback.set({
+          isPlaying: true,
+          currentItem: item?.id || null,
+          startTimestamp: item?.timestamp || null,
+          currentTime: mediaElement?.currentTime || 0
+        });
+        
+        // Set up interval to update current time
+        if (playbackInterval) clearInterval(playbackInterval);
+        playbackInterval = setInterval(() => {
+          if (mediaElement && !mediaElement.paused) {
+            mediaPlayback.update(state => ({
+              ...state,
+              currentTime: mediaElement?.currentTime || 0
+            }));
+          }
+        }, 100) as unknown as number; // Update 10 times per second
+      });
+      
+      mediaElement.addEventListener('pause', () => {
+        mediaPlayback.update(state => ({
+          ...state,
+          isPlaying: false
+        }));
+        
+        // Clear interval when paused
+        if (playbackInterval) {
+          clearInterval(playbackInterval);
+          playbackInterval = null;
+        }
+      });
+      
+      mediaElement.addEventListener('ended', () => {
+        mediaPlayback.update(state => ({
+          ...state,
+          isPlaying: false,
+          currentTime: 0
+        }));
+        
+        // Clear interval when ended
+        if (playbackInterval) {
+          clearInterval(playbackInterval);
+          playbackInterval = null;
+        }
+      });
+      
+      mediaElement.addEventListener('timeupdate', () => {
+        mediaPlayback.update(state => ({
+          ...state,
+          currentTime: mediaElement?.currentTime || 0
+        }));
+      });
+      
+      mediaElement.addEventListener('seeking', () => {
+        mediaPlayback.update(state => ({
+          ...state,
+          currentTime: mediaElement?.currentTime || 0
+        }));
+      });
     }
   }
 </script>
