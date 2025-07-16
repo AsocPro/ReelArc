@@ -2,6 +2,22 @@
 
 # Start the frontend and backend in development mode
 
+# Parse command line arguments
+WAIT_MODE=false
+while getopts "w" opt; do
+    case $opt in
+        w)
+            WAIT_MODE=true
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG" >&2
+            echo "Usage: $0 [-w]"
+            echo "  -w: Wait for SIGTERM/SIGKILL and run stop_dev.sh on signal"
+            exit 1
+            ;;
+    esac
+done
+
 # Check if bun is installed
 if ! command -v bun &> /dev/null; then
     echo "Error: bun is not installed. Please install it first."
@@ -76,3 +92,24 @@ echo "Frontend PID: $FRONTEND_PID"
 echo "Backend PID: $BACKEND_PID"
 echo "PIDs saved to $PID_ENV_FILE"
 echo "Use ./stop_dev.sh to stop the servers."
+
+# Signal handler function
+cleanup() {
+    echo "Received signal, stopping development servers..."
+    ./stop_dev.sh
+    exit 0
+}
+
+# If wait mode is enabled, set up signal handling and wait
+if [ "$WAIT_MODE" = true ]; then
+    echo "Wait mode enabled. Waiting for SIGTERM or SIGKILL..."
+    echo "Press Ctrl+C or send SIGTERM to stop the servers."
+    
+    # Set up signal handlers
+    trap cleanup SIGTERM SIGINT
+    
+    # Wait for signals (SIGKILL cannot be trapped, but process will be killed)
+    while true; do
+        sleep 1
+    done
+fi
