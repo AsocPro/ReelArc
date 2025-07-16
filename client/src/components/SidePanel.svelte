@@ -19,7 +19,7 @@
   let playbackInterval: number | null = null;
   
   $: if (item) {
-    labels = [...item.labels];
+    labels = [...(item.labels || [])];
     
     // Set up media tracking when item changes
     // Use setTimeout to ensure DOM is updated
