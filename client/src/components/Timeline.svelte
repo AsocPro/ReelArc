@@ -112,7 +112,7 @@
       showCurrentTime: true,
       zoomable: true,
       zoomMin: 1000 * 60 , // one minute in milliseconds
-      zoomMax: 1000 * 60 * 60 * 24 , // about one day in milliseconds
+      zoomMax: 1000 * 60 * 60 * 24 * 365, // about one year in milliseconds
       type: 'box',
       orientation: {
         axis: 'top',

@@ -1,3 +1,6 @@
 client/node_modules/
-server/data/media/
+server/data/
+frontend.log
+backend.log
+client/dist/
 .dev.env
