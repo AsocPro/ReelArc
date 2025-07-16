@@ -93,13 +93,13 @@ func (tq *TranscriptionQueue) GetNext() (string, bool) {
 
 	// Get the first file
 	filename := tq.Queue[0]
-	
+
 	// Remove from queue
 	tq.Queue = tq.Queue[1:]
-	
+
 	// Mark as in process
 	tq.InProcess[filename] = true
-	
+
 	return filename, true
 }
 
@@ -180,13 +180,13 @@ func transcriptionWorker() {
 		}
 
 		log.Printf("Processing transcription for %s", filename)
-		
+
 		// Process the file
 		err := processTranscription(filename)
 		if err != nil {
 			log.Printf("Transcription failed for %s: %v", filename, err)
 			TQueue.MarkFailed(filename, err.Error())
-			
+
 			// Create a .failed file
 			failedFilePath := filepath.Join(transcriptsDir, filename+".failed")
 			if err := os.WriteFile(failedFilePath, []byte(err.Error()), 0644); err != nil {
@@ -214,17 +214,17 @@ func checkExistingMediaFiles() {
 
 		filename := file.Name()
 		lowerFilename := strings.ToLower(filename)
-		
+
 		// Check if it's an audio or video file
-		if strings.HasSuffix(lowerFilename, ".mp3") || 
-		   strings.HasSuffix(lowerFilename, ".wav") || 
-		   strings.HasSuffix(lowerFilename, ".mp4") || 
-		   strings.HasSuffix(lowerFilename, ".mov") {
-			
+		if strings.HasSuffix(lowerFilename, ".mp3") ||
+			strings.HasSuffix(lowerFilename, ".wav") ||
+			strings.HasSuffix(lowerFilename, ".mp4") ||
+			strings.HasSuffix(lowerFilename, ".mov") {
+
 			// Check if transcript already exists
 			transcriptPath := filepath.Join(transcriptsDir, filename+".json")
 			failedPath := filepath.Join(transcriptsDir, filename+".failed")
-			
+
 			if _, err := os.Stat(transcriptPath); os.IsNotExist(err) {
 				if _, err := os.Stat(failedPath); os.IsNotExist(err) {
 					// No transcript or failed file exists, add to queue
@@ -238,21 +238,21 @@ func checkExistingMediaFiles() {
 // Process a file for transcription
 func processTranscription(filename string) error {
 	filePath := filepath.Join(mediaDir, filename)
-	
+
 	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("file does not exist: %s", filePath)
 	}
-	
+
 	// Determine if it's an audio or video file
 	lowerFilename := strings.ToLower(filename)
 	isVideo := strings.HasSuffix(lowerFilename, ".mp4") || strings.HasSuffix(lowerFilename, ".mov")
 	isAudio := strings.HasSuffix(lowerFilename, ".mp3") || strings.HasSuffix(lowerFilename, ".wav")
-	
+
 	if !isVideo && !isAudio {
 		return fmt.Errorf("unsupported file type: %s", filename)
 	}
-	
+
 	// For video files, extract audio first
 	var audioPath string
 	if isVideo {
@@ -265,25 +265,25 @@ func processTranscription(filename string) error {
 		// For audio files, use the original file
 		audioPath = filePath
 	}
-	
+
 	// Run whisperx on the audio file
 	transcriptPath := filepath.Join(transcriptsDir, filename+".json")
 	if err := runWhisperX(audioPath, transcriptPath); err != nil {
 		return fmt.Errorf("whisperx transcription failed: %v", err)
 	}
-	
+
 	// Clean up temporary audio file if it was extracted from video
 	if isVideo {
 		if err := os.Remove(audioPath); err != nil {
 			log.Printf("Warning: Failed to remove temporary audio file %s: %v", audioPath, err)
 		}
 	}
-	
+
 	// Update the metadata file with transcript information
 	if err := updateMetadataWithTranscript(filename, transcriptPath); err != nil {
 		return fmt.Errorf("failed to update metadata: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -307,10 +307,10 @@ func runWhisperX(audioPath, outputPath string) error {
 	defer os.RemoveAll(tempDir)
 
 	err = os.Chmod(tempDir, 0777)
-    if err != nil {
-        log.Fatal(err)
+	if err != nil {
+		log.Fatal(err)
 	}
-	
+
 	audioFileName := filepath.Base(audioPath)
 	tempAudioPath := filepath.Join(tempDir, audioFileName)
 	audioData, err := os.ReadFile(audioPath)
@@ -323,18 +323,18 @@ func runWhisperX(audioPath, outputPath string) error {
 	}
 
 	// Run whisperx
-	cmd := exec.Command("podman", "run",  "-v",  tempDir + ":/app:Z", "ghcr.io/jim60105/whisperx:base-en", "--", "--output_format", "json", "--compute_type", "int8", audioFileName)
+	cmd := exec.Command("podman", "run", "-v", tempDir+":/app:Z", "ghcr.io/jim60105/whisperx:base-en", "--", "--output_format", "json", "--compute_type", "int8", audioFileName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("whisperx error: %v, output: %s", err, string(output))
 	}
-	
+
 	// Find the JSON output file
 	files, err := os.ReadDir(tempDir)
 	if err != nil {
 		return fmt.Errorf("failed to read whisperx output directory: %v", err)
 	}
-	
+
 	var jsonFile string
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), ".json") {
@@ -342,60 +342,60 @@ func runWhisperX(audioPath, outputPath string) error {
 			break
 		}
 	}
-	
+
 	if jsonFile == "" {
 		return fmt.Errorf("no JSON output found from whisperx")
 	}
-	
+
 	// Read the whisperx output
 	data, err := os.ReadFile(jsonFile)
 	if err != nil {
 		return fmt.Errorf("failed to read whisperx output: %v", err)
 	}
-	
+
 	// Parse the whisperx output to extract segments
 	var whisperOutput map[string]interface{}
 	if err := json.Unmarshal(data, &whisperOutput); err != nil {
 		return fmt.Errorf("failed to parse whisperx output: %v", err)
 	}
-	
+
 	// Convert to our transcript format
 	segments, ok := whisperOutput["segments"].([]interface{})
 	if !ok {
 		return fmt.Errorf("invalid whisperx output format")
 	}
-	
+
 	var transcriptEntries []TranscriptEntry
 	for i, seg := range segments {
 		segment, ok := seg.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		
+
 		start, _ := segment["start"].(float64)
 		end, _ := segment["end"].(float64)
 		text, _ := segment["text"].(string)
-		
+
 		entry := TranscriptEntry{
 			Start:   start,
 			End:     end,
 			Text:    text,
 			Segment: i,
 		}
-		
+
 		transcriptEntries = append(transcriptEntries, entry)
 	}
-	
+
 	// Write the transcript to the output file
 	transcriptData, err := json.MarshalIndent(transcriptEntries, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal transcript: %v", err)
 	}
-	
+
 	if err := os.WriteFile(outputPath, transcriptData, 0644); err != nil {
 		return fmt.Errorf("failed to write transcript file: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -406,44 +406,108 @@ func updateMetadataWithTranscript(filename, transcriptPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read transcript file: %v", err)
 	}
-	
+
 	var transcriptEntries []TranscriptEntry
 	if err := json.Unmarshal(data, &transcriptEntries); err != nil {
 		return fmt.Errorf("failed to parse transcript: %v", err)
 	}
-	
-	// Read the metadata file
-	metadataPath := filepath.Join(metadataDir, filename+".json")
-	metadataData, err := os.ReadFile(metadataPath)
-	if err != nil {
-		return fmt.Errorf("failed to read metadata file: %v", err)
-	}
-	
-	var metadata MediaMetadata
-	if err := json.Unmarshal(metadataData, &metadata); err != nil {
-		return fmt.Errorf("failed to parse metadata: %v", err)
-	}
-	
-	// Update metadata with transcript
-	metadata.Transcripts = transcriptEntries
-	
+
 	// Create a full transcription text
 	var fullText strings.Builder
 	for _, entry := range transcriptEntries {
 		fullText.WriteString(entry.Text)
 		fullText.WriteString(" ")
 	}
-	metadata.Transcription = fullText.String()
-	
-	// Write updated metadata back to file
-	updatedData, err := json.MarshalIndent(metadata, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal updated metadata: %v", err)
+	transcriptionText := fullText.String()
+
+	// Check if we're using the new Markdown format or the old JSON format
+	metadataPathMd := filepath.Join(metadataDir, filename+mdExt)
+	metadataPathJson := filepath.Join(metadataDir, filename+jsonExt)
+
+	// First try with .md extension
+	if _, err := os.Stat(metadataPathMd); err == nil {
+		// Read the Markdown file with frontmatter
+		var metadata MediaMetadata
+		_, err := readMarkdownFile(metadataPathMd, &metadata)
+		if err != nil {
+			return fmt.Errorf("failed to read metadata file: %v", err)
+		}
+
+		// Update metadata with transcript
+		metadata.Transcripts = transcriptEntries
+
+		// Create frontmatter data
+		frontmatterData := struct {
+			ID          string            `yaml:"id"`
+			Filename    string            `yaml:"filename"`
+			Path        string            `yaml:"path"`
+			Type        string            `yaml:"type"`
+			Timestamp   string            `yaml:"timestamp"`
+			Duration    float64           `yaml:"duration,omitempty"`
+			Labels      []string          `yaml:"labels"`
+			Transcripts []TranscriptEntry `yaml:"transcripts,omitempty"`
+		}{
+			ID:          metadata.ID,
+			Filename:    metadata.Filename,
+			Path:        metadata.Path,
+			Type:        metadata.Type,
+			Timestamp:   metadata.Timestamp,
+			Duration:    metadata.Duration,
+			Labels:      metadata.Labels,
+			Transcripts: transcriptEntries,
+		}
+
+		// Write the Markdown file with frontmatter
+		if err := writeMarkdownFile(metadataPathMd, frontmatterData, transcriptionText); err != nil {
+			return fmt.Errorf("failed to write updated metadata: %v", err)
+		}
+	} else if _, err := os.Stat(metadataPathJson); err == nil {
+		// If .md file doesn't exist but .json does, read the JSON file
+		metadataData, err := os.ReadFile(metadataPathJson)
+		if err != nil {
+			return fmt.Errorf("failed to read metadata file: %v", err)
+		}
+
+		var metadata MediaMetadata
+		if err := json.Unmarshal(metadataData, &metadata); err != nil {
+			return fmt.Errorf("failed to parse metadata: %v", err)
+		}
+
+		// Update metadata with transcript
+		metadata.Transcripts = transcriptEntries
+		metadata.Transcription = transcriptionText
+
+		// Convert to Markdown with frontmatter
+		frontmatterData := struct {
+			ID          string            `yaml:"id"`
+			Filename    string            `yaml:"filename"`
+			Path        string            `yaml:"path"`
+			Type        string            `yaml:"type"`
+			Timestamp   string            `yaml:"timestamp"`
+			Duration    float64           `yaml:"duration,omitempty"`
+			Labels      []string          `yaml:"labels"`
+			Transcripts []TranscriptEntry `yaml:"transcripts,omitempty"`
+		}{
+			ID:          metadata.ID,
+			Filename:    metadata.Filename,
+			Path:        metadata.Path,
+			Type:        metadata.Type,
+			Timestamp:   metadata.Timestamp,
+			Duration:    metadata.Duration,
+			Labels:      metadata.Labels,
+			Transcripts: transcriptEntries,
+		}
+
+		// Write the Markdown file with frontmatter
+		if err := writeMarkdownFile(metadataPathMd, frontmatterData, transcriptionText); err != nil {
+			return fmt.Errorf("failed to write updated metadata: %v", err)
+		}
+
+		// Optionally, remove the old JSON file
+		// os.Remove(metadataPathJson)
+	} else {
+		return fmt.Errorf("metadata file not found for %s", filename)
 	}
-	
-	if err := os.WriteFile(metadataPath, updatedData, 0644); err != nil {
-		return fmt.Errorf("failed to write updated metadata: %v", err)
-	}
-	
+
 	return nil
 }
