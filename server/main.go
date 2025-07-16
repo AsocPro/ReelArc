@@ -69,133 +69,15 @@ const (
 	clientDir    = "./client/dist"
 
 	// File extensions
-	mdExt   = ".md"
-	jsonExt = ".json"
+	mdExt = ".md"
 )
 
-// Convert existing JSON files to Markdown format
-func convertJSONToMarkdown() {
-	// Timeline directory is already created in ensureDirectories
-
-	// Convert timeline.json to individual Markdown files
-	if _, err := os.Stat(timelineFile); err == nil && strings.HasSuffix(timelineFile, jsonExt) {
-		// Read the timeline.json file
-		data, err := os.ReadFile(timelineFile)
-		if err != nil {
-			log.Printf("Failed to read timeline file: %v", err)
-		} else {
-			var items []TimelineItem
-			if err := json.Unmarshal(data, &items); err != nil {
-				log.Printf("Failed to parse timeline data: %v", err)
-			} else {
-				// Convert each item to a Markdown file
-				for _, item := range items {
-					// Create a copy of the item without the Content field for frontmatter
-					frontmatterData := struct {
-						ID        string `yaml:"id"`
-						Start     string `yaml:"start"`
-						End       string `yaml:"end,omitempty"`
-						Type      string `yaml:"type,omitempty"`
-						MediaPath string `yaml:"mediapath,omitempty"`
-					}{
-						ID:        item.ID,
-						Start:     item.Start,
-						End:       item.End,
-						Type:      item.Type,
-						MediaPath: item.MediaPath,
-					}
-
-					// Write the item to a file
-					itemPath := filepath.Join(timelineDir, item.ID+mdExt)
-					if err := writeMarkdownFile(itemPath, frontmatterData, item.Content); err != nil {
-						log.Printf("Failed to write timeline item %s: %v", item.ID, err)
-					} else {
-						log.Printf("Converted timeline item %s to Markdown", item.ID)
-					}
-				}
-
-				// Rename the original JSON file to .json.bak
-				if err := os.Rename(timelineFile, timelineFile+".bak"); err != nil {
-					log.Printf("Failed to rename timeline file: %v", err)
-				}
-
-				// Create a new timeline.md file
-				newTimelineFile := strings.TrimSuffix(timelineFile, jsonExt) + mdExt
-				if err := writeMarkdownFile(newTimelineFile, nil, "# Timeline\n\nThis file contains the timeline data."); err != nil {
-					log.Printf("Failed to create new timeline file: %v", err)
-				}
-			}
-		}
-	}
-
-	// Convert metadata JSON files to Markdown files
-	files, err := os.ReadDir(metadataDir)
-	if err != nil {
-		log.Printf("Failed to read metadata directory: %v", err)
-		return
-	}
-
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), jsonExt) {
-			filePath := filepath.Join(metadataDir, file.Name())
-			data, err := os.ReadFile(filePath)
-			if err != nil {
-				log.Printf("Failed to read metadata file %s: %v", file.Name(), err)
-				continue
-			}
-
-			var metadata MediaMetadata
-			if err := json.Unmarshal(data, &metadata); err != nil {
-				log.Printf("Failed to parse metadata file %s: %v", file.Name(), err)
-				continue
-			}
-
-			// Create frontmatter data
-			frontmatterData := struct {
-				ID          string            `yaml:"id"`
-				Filename    string            `yaml:"filename"`
-				Path        string            `yaml:"path"`
-				Type        string            `yaml:"type"`
-				Timestamp   string            `yaml:"timestamp"`
-				Duration    float64           `yaml:"duration,omitempty"`
-				Labels      []string          `yaml:"labels"`
-				Transcripts []TranscriptEntry `yaml:"transcripts,omitempty"`
-			}{
-				ID:          metadata.ID,
-				Filename:    metadata.Filename,
-				Path:        metadata.Path,
-				Type:        metadata.Type,
-				Timestamp:   metadata.Timestamp,
-				Duration:    metadata.Duration,
-				Labels:      metadata.Labels,
-				Transcripts: metadata.Transcripts,
-			}
-
-			// Write the Markdown file with frontmatter
-			mdFilePath := strings.TrimSuffix(filePath, jsonExt) + mdExt
-			if err := writeMarkdownFile(mdFilePath, frontmatterData, metadata.Transcription); err != nil {
-				log.Printf("Failed to write metadata file %s: %v", file.Name(), err)
-			} else {
-				log.Printf("Converted metadata file %s to Markdown", file.Name())
-
-				// Optionally, rename the original JSON file to .json.bak
-				// if err := os.Rename(filePath, filePath+".bak"); err != nil {
-				// 	log.Printf("Failed to rename metadata file %s: %v", file.Name(), err)
-				// }
-			}
-		}
-	}
-}
 
 func main() {
 	// Ensure data directories exist
 	ensureDirectories()
 
-	// Create sample timeline data if it doesn't exist
-	ensureSampleTimelineData()
 
-	// Convert existing JSON files to Markdown format
-	convertJSONToMarkdown()
 
 	// Initialize transcription system
 	InitTranscriptionSystem()
@@ -322,74 +204,6 @@ func writeMarkdownFile(filePath string, data interface{}, body string) error {
 
 	return nil
 }
-func ensureSampleTimelineData() {
-	if _, err := os.Stat(timelineFile); os.IsNotExist(err) {
-		// Create sample timeline data
-		items := []TimelineItem{
-			{
-				ID:      "1",
-				Content: "Sample Audio",
-				Start:   "2023-01-01",
-				Type:    "audio",
-			},
-			{
-				ID:      "2",
-				Content: "Sample Video",
-				Start:   "2023-01-02",
-				End:     "2023-01-03",
-				Type:    "video",
-			},
-			{
-				ID:      "3",
-				Content: "Sample Image",
-				Start:   "2023-01-04",
-				Type:    "image",
-			},
-		}
-
-		// Convert to Markdown with frontmatter
-		for _, item := range items {
-			// Create a copy of the item without the Content field for frontmatter
-			frontmatterData := struct {
-				ID        string `yaml:"id"`
-				Start     string `yaml:"start"`
-				End       string `yaml:"end,omitempty"`
-				Type      string `yaml:"type,omitempty"`
-				MediaPath string `yaml:"mediapath,omitempty"`
-			}{
-				ID:        item.ID,
-				Start:     item.Start,
-				End:       item.End,
-				Type:      item.Type,
-				MediaPath: item.MediaPath,
-			}
-
-			// Write the item to a file
-			itemPath := filepath.Join(dataDir, "timeline", item.ID+mdExt)
-
-			// Ensure the directory exists
-			if err := os.MkdirAll(filepath.Dir(itemPath), 0755); err != nil {
-				log.Fatalf("Failed to create directory: %v", err)
-			}
-
-			if err := writeMarkdownFile(itemPath, frontmatterData, item.Content); err != nil {
-				log.Fatalf("Failed to write timeline item: %v", err)
-			}
-		}
-
-		// Also create a combined timeline file for backward compatibility
-		combinedData, err := json.MarshalIndent(items, "", "  ")
-		if err != nil {
-			log.Fatalf("Failed to marshal sample timeline data: %v", err)
-		}
-
-		if err := os.WriteFile(timelineFile, combinedData, 0644); err != nil {
-			log.Fatalf("Failed to write sample timeline data: %v", err)
-		}
-
-		fmt.Println("Created sample timeline data")
-	}
-}
 
 func handleTimeline(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -397,48 +211,33 @@ func handleTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if we're using the new Markdown format or the old JSON format
-	if _, err := os.Stat(timelineFile); os.IsNotExist(err) {
-		// If the timeline.md file doesn't exist, try to read from individual Markdown files
-		timelineDir := filepath.Join(dataDir, "timeline")
-		files, err := os.ReadDir(timelineDir)
-		if err != nil {
-			// If the directory doesn't exist or can't be read, return an error
-			http.Error(w, "Failed to read timeline data", http.StatusInternalServerError)
-			return
-		}
-
-		var items []TimelineItem
-		for _, file := range files {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
-				filePath := filepath.Join(timelineDir, file.Name())
-				var item TimelineItem
-				content, err := readMarkdownFile(filePath, &item)
-				if err != nil {
-					log.Printf("Failed to read timeline item %s: %v", file.Name(), err)
-					continue
-				}
-				item.Content = content
-				items = append(items, item)
-			}
-		}
-
-		// Marshal the combined items
-		data, err := json.Marshal(items)
-		if err != nil {
-			http.Error(w, "Failed to marshal timeline data", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+	// Read from individual Markdown files in the timeline directory
+	timelineDir := filepath.Join(dataDir, "timeline")
+	files, err := os.ReadDir(timelineDir)
+	if err != nil {
+		http.Error(w, "Failed to read timeline data", http.StatusInternalServerError)
 		return
 	}
 
-	// If we're still using the old format, read the file directly
-	data, err := os.ReadFile(timelineFile)
+	var items []TimelineItem
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+			filePath := filepath.Join(timelineDir, file.Name())
+			var item TimelineItem
+			content, err := readMarkdownFile(filePath, &item)
+			if err != nil {
+				log.Printf("Failed to read timeline item %s: %v", file.Name(), err)
+				continue
+			}
+			item.Content = content
+			items = append(items, item)
+		}
+	}
+
+	// Marshal the combined items
+	data, err := json.Marshal(items)
 	if err != nil {
-		http.Error(w, "Failed to read timeline data", http.StatusInternalServerError)
+		http.Error(w, "Failed to marshal timeline data", http.StatusInternalServerError)
 		return
 	}
 
@@ -657,32 +456,18 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 
 		var allMetadata []MediaMetadata
 		for _, file := range files {
-			if !file.IsDir() && (strings.HasSuffix(file.Name(), mdExt) || strings.HasSuffix(file.Name(), jsonExt)) {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
 				filePath := filepath.Join(metadataDir, file.Name())
 
 				var metadata MediaMetadata
 
-				if strings.HasSuffix(file.Name(), mdExt) {
-					// Read Markdown file with frontmatter
-					content, readErr := readMarkdownFile(filePath, &metadata)
-					if readErr != nil {
-						log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
-						continue
-					}
-					metadata.Transcription = content
-				} else {
-					// Read JSON file (for backward compatibility)
-					data, err := os.ReadFile(filePath)
-					if err != nil {
-						log.Printf("Failed to read metadata file %s: %v", file.Name(), err)
-						continue
-					}
-
-					if err := json.Unmarshal(data, &metadata); err != nil {
-						log.Printf("Failed to unmarshal metadata file %s: %v", file.Name(), err)
-						continue
-					}
+				// Read Markdown file with frontmatter
+				content, readErr := readMarkdownFile(filePath, &metadata)
+				if readErr != nil {
+					log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
+					continue
 				}
+				metadata.Transcription = content
 
 				allMetadata = append(allMetadata, metadata)
 			}
@@ -701,48 +486,26 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If a filename is provided, return that specific metadata file
-	// First try with .md extension
 	metadataPath := filepath.Join(metadataDir, filename+mdExt)
-	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
-		// If .md file doesn't exist, try with .json extension
-		metadataPath = filepath.Join(metadataDir, filename+jsonExt)
-	}
 
 	var metadata MediaMetadata
-	var responseData []byte
+	// Read Markdown file with frontmatter
+	content, readErr := readMarkdownFile(metadataPath, &metadata)
+	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			http.Error(w, "Metadata not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to read metadata", http.StatusInternalServerError)
+		}
+		return
+	}
+	metadata.Transcription = content
 
-	if strings.HasSuffix(metadataPath, mdExt) {
-		// Read Markdown file with frontmatter
-		content, readErr := readMarkdownFile(metadataPath, &metadata)
-		if readErr != nil {
-			if os.IsNotExist(readErr) {
-				http.Error(w, "Metadata not found", http.StatusNotFound)
-			} else {
-				http.Error(w, "Failed to read metadata", http.StatusInternalServerError)
-			}
-			return
-		}
-		metadata.Transcription = content
-
-		// Marshal the metadata
-		var marshalErr error
-		responseData, marshalErr = json.Marshal(metadata)
-		if marshalErr != nil {
-			http.Error(w, "Failed to marshal metadata", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		// Read JSON file (for backward compatibility)
-		var readErr error
-		responseData, readErr = os.ReadFile(metadataPath)
-		if readErr != nil {
-			if os.IsNotExist(readErr) {
-				http.Error(w, "Metadata not found", http.StatusNotFound)
-			} else {
-				http.Error(w, "Failed to read metadata", http.StatusInternalServerError)
-			}
-			return
-		}
+	// Marshal the metadata
+	responseData, marshalErr := json.Marshal(metadata)
+	if marshalErr != nil {
+		http.Error(w, "Failed to marshal metadata", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -779,32 +542,18 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 
 	var allMetadata []MediaMetadata
 	for _, file := range files {
-		if !file.IsDir() && (strings.HasSuffix(file.Name(), mdExt) || strings.HasSuffix(file.Name(), jsonExt)) {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
 			filePath := filepath.Join(metadataDir, file.Name())
 
 			var metadata MediaMetadata
 
-			if strings.HasSuffix(file.Name(), mdExt) {
-				// Read Markdown file with frontmatter
-				content, readErr := readMarkdownFile(filePath, &metadata)
-				if readErr != nil {
-					log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
-					continue
-				}
-				metadata.Transcription = content
-			} else {
-				// Read JSON file (for backward compatibility)
-				data, readErr := os.ReadFile(filePath)
-				if readErr != nil {
-					log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
-					continue
-				}
-
-				if unmarshalErr := json.Unmarshal(data, &metadata); unmarshalErr != nil {
-					log.Printf("Failed to unmarshal metadata file %s: %v", file.Name(), unmarshalErr)
-					continue
-				}
+			// Read Markdown file with frontmatter
+			content, readErr := readMarkdownFile(filePath, &metadata)
+			if readErr != nil {
+				log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
+				continue
 			}
+			metadata.Transcription = content
 
 			allMetadata = append(allMetadata, metadata)
 		}

@@ -420,93 +420,41 @@ func updateMetadataWithTranscript(filename, transcriptPath string) error {
 	}
 	transcriptionText := fullText.String()
 
-	// Check if we're using the new Markdown format or the old JSON format
+	// Read the Markdown file with frontmatter
 	metadataPathMd := filepath.Join(metadataDir, filename+mdExt)
-	metadataPathJson := filepath.Join(metadataDir, filename+jsonExt)
+	var metadata MediaMetadata
+	_, err := readMarkdownFile(metadataPathMd, &metadata)
+	if err != nil {
+		return fmt.Errorf("failed to read metadata file: %v", err)
+	}
 
-	// First try with .md extension
-	if _, err := os.Stat(metadataPathMd); err == nil {
-		// Read the Markdown file with frontmatter
-		var metadata MediaMetadata
-		_, err := readMarkdownFile(metadataPathMd, &metadata)
-		if err != nil {
-			return fmt.Errorf("failed to read metadata file: %v", err)
-		}
+	// Update metadata with transcript
+	metadata.Transcripts = transcriptEntries
 
-		// Update metadata with transcript
-		metadata.Transcripts = transcriptEntries
+	// Create frontmatter data
+	frontmatterData := struct {
+		ID          string            `yaml:"id"`
+		Filename    string            `yaml:"filename"`
+		Path        string            `yaml:"path"`
+		Type        string            `yaml:"type"`
+		Timestamp   string            `yaml:"timestamp"`
+		Duration    float64           `yaml:"duration,omitempty"`
+		Labels      []string          `yaml:"labels"`
+		Transcripts []TranscriptEntry `yaml:"transcripts,omitempty"`
+	}{
+		ID:          metadata.ID,
+		Filename:    metadata.Filename,
+		Path:        metadata.Path,
+		Type:        metadata.Type,
+		Timestamp:   metadata.Timestamp,
+		Duration:    metadata.Duration,
+		Labels:      metadata.Labels,
+		Transcripts: transcriptEntries,
+	}
 
-		// Create frontmatter data
-		frontmatterData := struct {
-			ID          string            `yaml:"id"`
-			Filename    string            `yaml:"filename"`
-			Path        string            `yaml:"path"`
-			Type        string            `yaml:"type"`
-			Timestamp   string            `yaml:"timestamp"`
-			Duration    float64           `yaml:"duration,omitempty"`
-			Labels      []string          `yaml:"labels"`
-			Transcripts []TranscriptEntry `yaml:"transcripts,omitempty"`
-		}{
-			ID:          metadata.ID,
-			Filename:    metadata.Filename,
-			Path:        metadata.Path,
-			Type:        metadata.Type,
-			Timestamp:   metadata.Timestamp,
-			Duration:    metadata.Duration,
-			Labels:      metadata.Labels,
-			Transcripts: transcriptEntries,
-		}
-
-		// Write the Markdown file with frontmatter
-		if err := writeMarkdownFile(metadataPathMd, frontmatterData, transcriptionText); err != nil {
-			return fmt.Errorf("failed to write updated metadata: %v", err)
-		}
-	} else if _, err := os.Stat(metadataPathJson); err == nil {
-		// If .md file doesn't exist but .json does, read the JSON file
-		metadataData, err := os.ReadFile(metadataPathJson)
-		if err != nil {
-			return fmt.Errorf("failed to read metadata file: %v", err)
-		}
-
-		var metadata MediaMetadata
-		if err := json.Unmarshal(metadataData, &metadata); err != nil {
-			return fmt.Errorf("failed to parse metadata: %v", err)
-		}
-
-		// Update metadata with transcript
-		metadata.Transcripts = transcriptEntries
-		metadata.Transcription = transcriptionText
-
-		// Convert to Markdown with frontmatter
-		frontmatterData := struct {
-			ID          string            `yaml:"id"`
-			Filename    string            `yaml:"filename"`
-			Path        string            `yaml:"path"`
-			Type        string            `yaml:"type"`
-			Timestamp   string            `yaml:"timestamp"`
-			Duration    float64           `yaml:"duration,omitempty"`
-			Labels      []string          `yaml:"labels"`
-			Transcripts []TranscriptEntry `yaml:"transcripts,omitempty"`
-		}{
-			ID:          metadata.ID,
-			Filename:    metadata.Filename,
-			Path:        metadata.Path,
-			Type:        metadata.Type,
-			Timestamp:   metadata.Timestamp,
-			Duration:    metadata.Duration,
-			Labels:      metadata.Labels,
-			Transcripts: transcriptEntries,
-		}
-
-		// Write the Markdown file with frontmatter
-		if err := writeMarkdownFile(metadataPathMd, frontmatterData, transcriptionText); err != nil {
-			return fmt.Errorf("failed to write updated metadata: %v", err)
-		}
-
-		// Optionally, remove the old JSON file
-		// os.Remove(metadataPathJson)
-	} else {
-		return fmt.Errorf("metadata file not found for %s", filename)
+	// Write the Markdown file with frontmatter
+	if err := writeMarkdownFile(metadataPathMd, frontmatterData, transcriptionText); err != nil {
+		return fmt.Errorf("failed to write updated metadata: %v", err)
 	}
 
 	return nil
