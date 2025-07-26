@@ -467,6 +467,11 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 				}
 				metadata.Transcription = content
 
+				// Ensure Labels is never nil
+				if metadata.Labels == nil {
+					metadata.Labels = []string{}
+				}
+
 				allMetadata = append(allMetadata, metadata)
 			}
 		}
@@ -498,6 +503,11 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metadata.Transcription = content
+
+	// Ensure Labels is never nil
+	if metadata.Labels == nil {
+		metadata.Labels = []string{}
+	}
 
 	// Marshal the metadata
 	responseData, marshalErr := json.Marshal(metadata)
@@ -552,6 +562,11 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			metadata.Transcription = content
+
+			// Ensure Labels is never nil
+			if metadata.Labels == nil {
+				metadata.Labels = []string{}
+			}
 
 			allMetadata = append(allMetadata, metadata)
 		}
