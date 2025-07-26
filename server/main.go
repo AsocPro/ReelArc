@@ -72,12 +72,9 @@ const (
 	mdExt = ".md"
 )
 
-
 func main() {
 	// Ensure data directories exist
 	ensureDirectories()
-
-
 
 	// Initialize transcription system
 	InitTranscriptionSystem()
@@ -88,6 +85,7 @@ func main() {
 	http.HandleFunc("/api/metadata/", handleMetadata)
 	http.HandleFunc("/api/media", handleMedia)
 	http.HandleFunc("/api/transcription/status", handleTranscriptionStatus)
+	http.HandleFunc("/api/labels/update", handleUpdateLabels)
 
 	// Serve media files
 	http.HandleFunc("/media/", handleMediaFiles)
@@ -469,6 +467,11 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 				}
 				metadata.Transcription = content
 
+				// Ensure Labels is never nil
+				if metadata.Labels == nil {
+					metadata.Labels = []string{}
+				}
+
 				allMetadata = append(allMetadata, metadata)
 			}
 		}
@@ -500,6 +503,11 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metadata.Transcription = content
+
+	// Ensure Labels is never nil
+	if metadata.Labels == nil {
+		metadata.Labels = []string{}
+	}
 
 	// Marshal the metadata
 	responseData, marshalErr := json.Marshal(metadata)
@@ -555,6 +563,11 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 			}
 			metadata.Transcription = content
 
+			// Ensure Labels is never nil
+			if metadata.Labels == nil {
+				metadata.Labels = []string{}
+			}
+
 			allMetadata = append(allMetadata, metadata)
 		}
 	}
@@ -598,4 +611,99 @@ func handleTranscriptionStatus(w http.ResponseWriter, r *http.Request) {
 	// Return as JSON
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(statuses)
+}
+
+// UpdateLabelsRequest represents the request body for updating labels
+type UpdateLabelsRequest struct {
+	ID     string   `json:"id"`
+	Labels []string `json:"labels"`
+}
+
+// Handler for updating labels API
+func handleUpdateLabels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req UpdateLabelsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if req.ID == "" {
+		http.Error(w, "ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Find the metadata file by ID
+	// We need to search through all metadata files to find the one with matching ID
+	files, err := os.ReadDir(metadataDir)
+	if err != nil {
+		http.Error(w, "Failed to read metadata directory", http.StatusInternalServerError)
+		return
+	}
+
+	var targetFile string
+	var metadata MediaMetadata
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+			filePath := filepath.Join(metadataDir, file.Name())
+
+			var tempMetadata MediaMetadata
+			content, readErr := readMarkdownFile(filePath, &tempMetadata)
+			if readErr != nil {
+				log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
+				continue
+			}
+
+			if tempMetadata.ID == req.ID {
+				targetFile = filePath
+				metadata = tempMetadata
+				metadata.Transcription = content
+				break
+			}
+		}
+	}
+
+	if targetFile == "" {
+		http.Error(w, "Media item not found", http.StatusNotFound)
+		return
+	}
+
+	// Update the labels
+	metadata.Labels = req.Labels
+
+	// Create frontmatter data for writing
+	frontmatterData := struct {
+		ID        string   `yaml:"id"`
+		Filename  string   `yaml:"filename"`
+		Path      string   `yaml:"path"`
+		Type      string   `yaml:"type"`
+		Timestamp string   `yaml:"timestamp"`
+		Duration  float64  `yaml:"duration,omitempty"`
+		Labels    []string `yaml:"labels"`
+	}{
+		ID:        metadata.ID,
+		Filename:  metadata.Filename,
+		Path:      metadata.Path,
+		Type:      metadata.Type,
+		Timestamp: metadata.Timestamp,
+		Duration:  metadata.Duration,
+		Labels:    metadata.Labels,
+	}
+
+	// Write the updated metadata back to the file
+	if err := writeMarkdownFile(targetFile, frontmatterData, metadata.Transcription); err != nil {
+		log.Printf("Error updating metadata file %s: %v", targetFile, err)
+		http.Error(w, "Failed to update labels", http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated metadata
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metadata)
 }

@@ -423,7 +423,7 @@ func updateMetadataWithTranscript(filename, transcriptPath string) error {
 	// Read the Markdown file with frontmatter
 	metadataPathMd := filepath.Join(metadataDir, filename+mdExt)
 	var metadata MediaMetadata
-	_, err := readMarkdownFile(metadataPathMd, &metadata)
+	_, err = readMarkdownFile(metadataPathMd, &metadata)
 	if err != nil {
 		return fmt.Errorf("failed to read metadata file: %v", err)
 	}

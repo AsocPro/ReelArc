@@ -43,6 +43,10 @@
     });
   }
   
+  // Call cleanup when component is destroyed
+  import { onDestroy } from 'svelte';
+  onDestroy(cleanup);
+  
   function addLabel() {
     if (newLabel.trim() && !labels.includes(newLabel.trim())) {
       labels = [...labels, newLabel.trim()];

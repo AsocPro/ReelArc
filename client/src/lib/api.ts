@@ -43,16 +43,22 @@ export async function fetchTranscriptionStatus(): Promise<TranscriptionStatus[]>
  */
 export async function updateLabels(id: string, labels: string[]): Promise<MediaItem | null> {
   try {
-    // In a real implementation, this would be a PUT or PATCH request
-    // For now, we'll just return a mock response
-    return {
-      id,
-      labels,
-      type: 'photo', // This would come from the server in a real implementation
-      timestamp: new Date().toISOString(),
-      filename: 'mock.jpg',
-      transcription: ''
-    };
+    const response = await fetch('/api/labels/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id,
+        labels
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update labels: ${response.statusText}`);
+    }
+
+    return await response.json();
   } catch (error) {
     console.error('Error updating labels:', error);
     return null;
