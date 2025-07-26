@@ -1,0 +1,21 @@
+[
+  {
+    "id": "1",
+    "content": "Sample Audio",
+    "start": "2023-01-01",
+    "type": "audio"
+  },
+  {
+    "id": "2",
+    "content": "Sample Video",
+    "start": "2023-01-02",
+    "end": "2023-01-03",
+    "type": "video"
+  },
+  {
+    "id": "3",
+    "content": "Sample Image",
+    "start": "2023-01-04",
+    "type": "image"
+  }
+]
