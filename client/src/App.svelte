@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Timeline from './components/Timeline.svelte';
+  import TimelineViewer from './components/TimelineViewer.svelte';
 
   import UploadForm from './components/UploadForm.svelte';
   import TranscriptionStatus from './components/TranscriptionStatus.svelte';
@@ -13,7 +13,7 @@
   let loading = true;
   let error = '';
   let activeTab = 'upload'; // 'transcription', 'upload', or 'details'
-  let timelineComponent: any;
+  let timelineViewerComponent: any;
   
   onMount(async () => {
     await loadMediaItems();
@@ -59,8 +59,8 @@
   }
   
   function handleCenterPlayhead() {
-    if (timelineComponent && typeof timelineComponent.centerOnPlayhead === 'function') {
-      timelineComponent.centerOnPlayhead();
+    if (timelineViewerComponent && typeof timelineViewerComponent.centerOnPlayhead === 'function') {
+      timelineViewerComponent.centerOnPlayhead();
     }
   }
 </script>
@@ -71,20 +71,16 @@
   </header>
   
   <div class="container">
-    <!-- Timeline component always visible at the top -->
+    <!-- Timeline viewer with tabbed interface always visible at the top -->
     <div class="timeline-container">
-      {#if loading}
-        <div class="loading">Loading media data...</div>
-      {:else if error}
-        <div class="error">{error}</div>
-      {:else}
-        <Timeline 
-          data={mediaItems} 
-          on:item-select={handleItemSelect}
-          on:center-playhead
-          bind:this={timelineComponent}
-        />
-      {/if}
+      <TimelineViewer 
+        data={mediaItems} 
+        {loading}
+        {error}
+        on:item-select={handleItemSelect}
+        on:center-playhead
+        bind:this={timelineViewerComponent}
+      />
     </div>
 
     <div class="tabs">
@@ -176,10 +172,7 @@
   
   .timeline-container {
     margin-bottom: 1rem;
-    border: 1px solid #eee;
-    border-radius: 4px;
-    overflow: hidden;
-    min-height: 200px;
+    min-height: 400px;
   }
   
   .upload-section, 

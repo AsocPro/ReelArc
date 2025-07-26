@@ -39,3 +39,16 @@ export interface TranscriptionStatus {
   error?: string;
   timestamp: string;
 }
+
+export interface ViewConfig {
+  id: string;
+  label: string;
+  component: any;
+  icon?: string;
+}
+
+export interface TabConfig {
+  id: string;
+  label: string;
+  disabled?: boolean;
+}

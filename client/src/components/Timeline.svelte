@@ -3,11 +3,13 @@
   import { DataSet, Timeline } from 'vis-timeline/standalone';
   import 'vis-timeline/styles/vis-timeline-graph2d.css';
   import type { MediaItem, TimelineItem } from '../lib/types';
-  import { fetchMediaItems } from '../lib/api';
+
   import { mediaPlayback } from '../lib/stores';
   import { get } from 'svelte/store';
   
   export let data: MediaItem[] = [];
+  export let loading = false;
+  export let error = '';
   
   const dispatch = createEventDispatcher<{
     'item-select': MediaItem;
@@ -17,8 +19,6 @@
   let container: HTMLElement;
   let timeline: any;
   let timelineItems: TimelineItem[] = [];
-  let loading = true;
-  let error = '';
   let playheadLine: any = null;
   let unsubscribe: () => void;
   
@@ -30,7 +30,6 @@
     // Update existing timeline with new data
     convertToTimelineItems();
     updateTimeline();
-    loading = false; // Ensure loading is set to false when data is available
   }
   
   // Watch for container changes
@@ -39,33 +38,12 @@
   }
   
   onMount(() => {
-    // Set up async initialization
-    const initialize = async () => {
-      // If no data is provided, fetch it
-      if (data.length === 0) {
-        try {
-          loading = true;
-          data = await fetchMediaItems();
-        } catch (err) {
-          loading = false;
-          error = 'Failed to load media items';
-          console.error(error, err);
-        }
+    // Wait for the next tick to ensure container is rendered
+    setTimeout(() => {
+      if (container && data.length > 0) {
+        initializeTimeline();
       }
-      
-      // Wait for the next tick to ensure container is rendered
-      setTimeout(() => {
-        if (container && data.length > 0) {
-          initializeTimeline();
-        } else if (data.length > 0) {
-          // If we have data but no container yet, we'll wait for the container to be bound
-          loading = false;
-        }
-      }, 0);
-    };
-    
-    // Start initialization
-    initialize();
+    }, 0);
     
     // Subscribe to media playback store to update playhead
     unsubscribe = mediaPlayback.subscribe(state => {
@@ -140,8 +118,7 @@
         updateTimeline();
       }
       
-      // Set loading to false now that timeline is initialized
-      loading = false;
+      // Timeline is now initialized
       
       // Check if we need to create a playhead marker
       const playbackState = get(mediaPlayback);
@@ -151,8 +128,6 @@
       }
     } catch (err) {
       console.error('Failed to initialize timeline:', err);
-      error = 'Failed to initialize timeline';
-      loading = false; // Set loading to false even if there's an error
     }
   }
   
