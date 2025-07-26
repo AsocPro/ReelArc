@@ -443,8 +443,41 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 
 	filename := strings.TrimPrefix(r.URL.Path, "/api/metadata/")
 
-	// If no filename is provided, return all metadata files
+	// If no filename is provided, return all metadata files (with optional filtering)
 	if filename == "" {
+		// Parse query parameters for filtering
+		queryParams := r.URL.Query()
+		startDate := queryParams.Get("startDate")
+		endDate := queryParams.Get("endDate")
+		labelsParam := queryParams.Get("labels")
+
+		var filterLabels []string
+		if labelsParam != "" {
+			filterLabels = strings.Split(labelsParam, ",")
+			// Trim whitespace from each label
+			for i, label := range filterLabels {
+				filterLabels[i] = strings.TrimSpace(label)
+			}
+		}
+
+		// Parse date filters if provided
+		var startTime, endTime time.Time
+		var err error
+		if startDate != "" {
+			startTime, err = time.Parse(time.RFC3339, startDate)
+			if err != nil {
+				http.Error(w, "Invalid startDate format. Use RFC3339 format (e.g., 2023-01-01T00:00:00Z)", http.StatusBadRequest)
+				return
+			}
+		}
+		if endDate != "" {
+			endTime, err = time.Parse(time.RFC3339, endDate)
+			if err != nil {
+				http.Error(w, "Invalid endDate format. Use RFC3339 format (e.g., 2023-12-31T23:59:59Z)", http.StatusBadRequest)
+				return
+			}
+		}
+
 		// Read all Markdown files from the metadata directory
 		files, err := os.ReadDir(metadataDir)
 		if err != nil {
@@ -470,6 +503,41 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 				// Ensure Labels is never nil
 				if metadata.Labels == nil {
 					metadata.Labels = []string{}
+				}
+				// Apply date range filtering
+				if startDate != "" || endDate != "" {
+					itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
+					if parseErr != nil {
+						log.Printf("Failed to parse timestamp for %s: %v", file.Name(), parseErr)
+						continue
+					}
+
+					// Check if item falls within date range
+					if startDate != "" && itemTime.Before(startTime) {
+						continue
+					}
+					if endDate != "" && itemTime.After(endTime) {
+						continue
+					}
+				}
+
+				// Apply label filtering
+				if len(filterLabels) > 0 {
+					hasMatchingLabel := false
+					for _, filterLabel := range filterLabels {
+						for _, itemLabel := range metadata.Labels {
+							if strings.EqualFold(strings.TrimSpace(itemLabel), filterLabel) {
+								hasMatchingLabel = true
+								break
+							}
+						}
+						if hasMatchingLabel {
+							break
+						}
+					}
+					if !hasMatchingLabel {
+						continue
+					}
 				}
 
 				allMetadata = append(allMetadata, metadata)
@@ -541,6 +609,39 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse query parameters for filtering
+	queryParams := r.URL.Query()
+	startDate := queryParams.Get("startDate")
+	endDate := queryParams.Get("endDate")
+	labelsParam := queryParams.Get("labels")
+
+	var filterLabels []string
+	if labelsParam != "" {
+		filterLabels = strings.Split(labelsParam, ",")
+		// Trim whitespace from each label
+		for i, label := range filterLabels {
+			filterLabels[i] = strings.TrimSpace(label)
+		}
+	}
+
+	// Parse date filters if provided
+	var startTime, endTime time.Time
+	var err error
+	if startDate != "" {
+		startTime, err = time.Parse(time.RFC3339, startDate)
+		if err != nil {
+			http.Error(w, "Invalid startDate format. Use RFC3339 format (e.g., 2023-01-01T00:00:00Z)", http.StatusBadRequest)
+			return
+		}
+	}
+	if endDate != "" {
+		endTime, err = time.Parse(time.RFC3339, endDate)
+		if err != nil {
+			http.Error(w, "Invalid endDate format. Use RFC3339 format (e.g., 2023-12-31T23:59:59Z)", http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Read all files from the metadata directory
 	files, err := os.ReadDir(metadataDir)
 	if err != nil {
@@ -566,6 +667,41 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 			// Ensure Labels is never nil
 			if metadata.Labels == nil {
 				metadata.Labels = []string{}
+			}
+			// Apply date range filtering
+			if startDate != "" || endDate != "" {
+				itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
+				if parseErr != nil {
+					log.Printf("Failed to parse timestamp for %s: %v", file.Name(), parseErr)
+					continue
+				}
+
+				// Check if item falls within date range
+				if startDate != "" && itemTime.Before(startTime) {
+					continue
+				}
+				if endDate != "" && itemTime.After(endTime) {
+					continue
+				}
+			}
+
+			// Apply label filtering
+			if len(filterLabels) > 0 {
+				hasMatchingLabel := false
+				for _, filterLabel := range filterLabels {
+					for _, itemLabel := range metadata.Labels {
+						if strings.EqualFold(strings.TrimSpace(itemLabel), filterLabel) {
+							hasMatchingLabel = true
+							break
+						}
+					}
+					if hasMatchingLabel {
+						break
+					}
+				}
+				if !hasMatchingLabel {
+					continue
+				}
 			}
 
 			allMetadata = append(allMetadata, metadata)
