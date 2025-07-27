@@ -58,3 +58,10 @@ export interface MediaFilters {
   endDate?: string;
   labels?: string[];
 }
+
+export interface ZoomLevel {
+  id: string;
+  label: string;
+  duration: number; // Duration in milliseconds
+  snapTo: 'hour' | 'day' | 'week' | 'month' | 'year';
+}
