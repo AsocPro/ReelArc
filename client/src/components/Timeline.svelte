@@ -81,9 +81,10 @@
     }
     
     // Don't reinitialize if timeline already exists
-    if (timeline) {
-      return;
-    }
+    //TODO make sure this is good to not have here. Come back during cleanup
+    //if (timeline) {
+      //return;
+    //}
     
     // Initialize an empty timeline
     const options = {
@@ -254,10 +255,12 @@
   
   // Force refresh the timeline - can be called from parent component
   export function refreshTimeline() {
-    if (timeline && container) {
-      convertToTimelineItems();
-      updateTimeline();
-    }
+
+  initializeTimeline()
+    //if (timeline && container) {
+      //convertToTimelineItems();
+      //updateTimeline();
+    //}
   }
 </script>
 
