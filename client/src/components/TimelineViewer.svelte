@@ -14,7 +14,7 @@
     'center-playhead': void;
   }>();
 
-  let activeTab = 'timeline';
+  let activeTab = 'table';
   let timelineComponent: any;
 
   const tabs: TabConfig[] = [

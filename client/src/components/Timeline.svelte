@@ -58,7 +58,7 @@
   onMount(() => {
     // Wait for the next tick to ensure container is rendered
     setTimeout(() => {
-      if (container && data.length > 0) {
+      if (container && !timeline && data.length > 0) {
         initializeTimeline();
       }
     }, 0);
