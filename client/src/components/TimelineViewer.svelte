@@ -39,6 +39,12 @@
       timelineComponent.centerOnPlayhead();
     }
   }
+  
+  export function refreshTimeline() {
+    if (timelineComponent && typeof timelineComponent.refreshTimeline === 'function') {
+      timelineComponent.refreshTimeline();
+    }
+  }
 </script>
 
 <div class="timeline-viewer">

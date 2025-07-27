@@ -33,6 +33,13 @@
       mediaItems = await fetchMediaItems(filters);
       updateAvailableLabels();
       loading = false;
+      
+      // Force refresh the timeline after data loads
+      setTimeout(() => {
+        if (timelineViewerComponent && typeof timelineViewerComponent.refreshTimeline === 'function') {
+          timelineViewerComponent.refreshTimeline();
+        }
+      }, 100);
     } catch (err) {
       loading = false;
       error = 'Failed to load media items';

@@ -23,11 +23,14 @@
   let unsubscribe: () => void;
   
   // Watch for changes in data and container
-  $: if (data.length > 0 && container && !timeline) {
+  $: if (container && !timeline && data.length > 0) {
     // Initialize timeline if container is available but timeline isn't created yet
     initializeTimeline();
-  } else if (data.length > 0 && timeline) {
-    // Update existing timeline with new data
+  }
+  
+  // Watch for data changes and update timeline
+  $: if (timeline && container) {
+    // Update existing timeline with new data (including empty data)
     convertToTimelineItems();
     updateTimeline();
   }
@@ -178,7 +181,10 @@
     
     try {
       timeline.setItems(items);
-      timeline.fit();
+      // Only fit if there are items to show
+      if (timelineItems.length > 0) {
+        timeline.fit();
+      }
     } catch (err) {
       console.error('Error updating timeline:', err);
     }
@@ -243,6 +249,14 @@
       }
     } catch (err) {
       console.error('Error centering on playhead:', err);
+    }
+  }
+  
+  // Force refresh the timeline - can be called from parent component
+  export function refreshTimeline() {
+    if (timeline && container) {
+      convertToTimelineItems();
+      updateTimeline();
     }
   }
 </script>
