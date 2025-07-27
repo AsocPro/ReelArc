@@ -52,3 +52,9 @@ export interface TabConfig {
   label: string;
   disabled?: boolean;
 }
+
+export interface MediaFilters {
+  startDate?: string;
+  endDate?: string;
+  labels?: string[];
+}
