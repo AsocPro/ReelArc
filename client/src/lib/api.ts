@@ -1,12 +1,27 @@
-import type { MediaItem, TranscriptionStatus } from './types';
+import type { MediaItem, TranscriptionStatus, MediaFilters } from './types';
 
 /**
  * Fetches media items from the API
+ * @param filters Optional filters for date range and labels
  * @returns Promise with array of media items
  */
-export async function fetchMediaItems(): Promise<MediaItem[]> {
+export async function fetchMediaItems(filters?: MediaFilters): Promise<MediaItem[]> {
   try {
-    const response = await fetch('/api/media');
+    const url = new URL('/api/media', window.location.origin);
+    
+    if (filters) {
+      if (filters.startDate) {
+        url.searchParams.set('startDate', filters.startDate);
+      }
+      if (filters.endDate) {
+        url.searchParams.set('endDate', filters.endDate);
+      }
+      if (filters.labels && filters.labels.length > 0) {
+        url.searchParams.set('labels', filters.labels.join(','));
+      }
+    }
+    
+    const response = await fetch(url.toString());
     if (!response.ok) {
       throw new Error(`Failed to fetch media items: ${response.statusText}`);
     }

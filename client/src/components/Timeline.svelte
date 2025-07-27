@@ -38,11 +38,14 @@
   currentZoomLevel = zoomLevels[1] as ZoomLevel;
   
   // Watch for changes in data and container
-  $: if (data.length > 0 && container && !timeline) {
+  $: if (container && !timeline && data.length > 0) {
     // Initialize timeline if container is available but timeline isn't created yet
     initializeTimeline();
-  } else if (data.length > 0 && timeline) {
-    // Update existing timeline with new data
+  }
+  
+  // Watch for data changes and update timeline
+  $: if (timeline && container) {
+    // Update existing timeline with new data (including empty data)
     convertToTimelineItems();
     updateTimeline();
   }
@@ -100,9 +103,10 @@
     }
     
     // Don't reinitialize if timeline already exists
-    if (timeline) {
-      return;
-    }
+    //TODO make sure this is good to not have here. Come back during cleanup
+    //if (timeline) {
+      //return;
+    //}
     
     // Initialize an empty timeline
     const options = {
@@ -203,7 +207,10 @@
     
     try {
       timeline.setItems(items);
-      timeline.fit();
+      // Only fit if there are items to show
+      if (timelineItems.length > 0) {
+        timeline.fit();
+      }
     } catch (err) {
       console.error('Error updating timeline:', err);
     }
@@ -271,6 +278,16 @@
     }
   }
   
+
+  // Force refresh the timeline - can be called from parent component
+  export function refreshTimeline() {
+
+  initializeTimeline()
+    //if (timeline && container) {
+      //convertToTimelineItems();
+      //updateTimeline();
+    //}
+  }
   // Start updating current time marker
   function startCurrentTimeUpdates() {
     // Create initial current time marker
@@ -404,6 +421,7 @@
     const snappedEnd = new Date(snappedStart.getTime() + currentZoomLevel.duration);
     
     timeline.setWindow(snappedStart, snappedEnd, { animation: true });
+
   }
 </script>
 

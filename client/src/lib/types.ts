@@ -53,6 +53,12 @@ export interface TabConfig {
   disabled?: boolean;
 }
 
+export interface MediaFilters {
+  startDate?: string;
+  endDate?: string;
+  labels?: string[];
+}
+
 export interface ZoomLevel {
   id: string;
   label: string;
