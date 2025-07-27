@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { onMount, createEventDispatcher } from 'svelte';
+  import { onMount, createEventDispatcher, onDestroy } from 'svelte';
   import { DataSet, Timeline } from 'vis-timeline/standalone';
   import 'vis-timeline/styles/vis-timeline-graph2d.css';
-  import type { MediaItem, TimelineItem } from '../lib/types';
+  import type { MediaItem, TimelineItem, ZoomLevel } from '../lib/types';
 
   import { mediaPlayback } from '../lib/stores';
   import { get } from 'svelte/store';
@@ -20,7 +20,22 @@
   let timeline: any;
   let timelineItems: TimelineItem[] = [];
   let playheadLine: any = null;
+  let currentTimeMarker: any = null;
   let unsubscribe: () => void;
+  let currentTimeInterval: any = null;
+  let currentZoomLevel: ZoomLevel;
+  
+  // Zoom level configuration
+  const zoomLevels: ZoomLevel[] = [
+    { id: 'hour', label: '1 Hour', duration: 60 * 60 * 1000, snapTo: 'hour' },
+    { id: 'day', label: '1 Day', duration: 24 * 60 * 60 * 1000, snapTo: 'day' },
+    { id: 'week', label: '1 Week', duration: 7 * 24 * 60 * 60 * 1000, snapTo: 'week' },
+    { id: 'month', label: '1 Month', duration: 30 * 24 * 60 * 60 * 1000, snapTo: 'month' },
+    { id: 'year', label: '1 Year', duration: 365 * 24 * 60 * 60 * 1000, snapTo: 'year' }
+  ];
+  
+  // Initialize with day view
+  currentZoomLevel = zoomLevels[1] as ZoomLevel;
   
   // Watch for changes in data and container
   $: if (data.length > 0 && container && !timeline) {
@@ -58,17 +73,24 @@
       }
     });
     
-    // Return a cleanup function
-    return () => {
-      if (timeline) {
-        timeline.destroy();
-      }
-      
-      // Unsubscribe from store when component is destroyed
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
+    // Start current time marker updates
+    startCurrentTimeUpdates();
+  });
+  
+  onDestroy(() => {
+    if (timeline) {
+      timeline.destroy();
+    }
+    
+    // Unsubscribe from store when component is destroyed
+    if (unsubscribe) {
+      unsubscribe();
+    }
+    
+    // Clear current time interval
+    if (currentTimeInterval) {
+      clearInterval(currentTimeInterval);
+    }
   });
   
   function initializeTimeline() {
@@ -119,6 +141,9 @@
       }
       
       // Timeline is now initialized
+      
+      // Create current time marker
+      createCurrentTimeMarker();
       
       // Check if we need to create a playhead marker
       const playbackState = get(mediaPlayback);
@@ -245,6 +270,141 @@
       console.error('Error centering on playhead:', err);
     }
   }
+  
+  // Start updating current time marker
+  function startCurrentTimeUpdates() {
+    // Create initial current time marker
+    createCurrentTimeMarker();
+    
+    // Update every 30 seconds
+    currentTimeInterval = setInterval(() => {
+      updateCurrentTimeMarker();
+    }, 30000);
+  }
+  
+  // Create current time marker
+  function createCurrentTimeMarker() {
+    if (!timeline) return;
+    
+    // Remove existing marker if it exists
+    if (currentTimeMarker) {
+      timeline.removeCustomTime(currentTimeMarker);
+      currentTimeMarker = null;
+    }
+    
+    // Create a new current time marker
+    currentTimeMarker = 'current-time-' + Date.now();
+    try {
+      timeline.addCustomTime(new Date(), currentTimeMarker);
+      timeline.setCustomTimeMarker('Current Time', currentTimeMarker, false);
+      
+      // Style the current time marker
+      const markerElement = container.querySelector(`.vis-custom-time.${currentTimeMarker}`);
+      if (markerElement) {
+        markerElement.classList.add('current-time-marker');
+      }
+    } catch (err) {
+      console.error('Error creating current time marker:', err);
+    }
+  }
+  
+  // Update current time marker position
+  function updateCurrentTimeMarker() {
+    if (!timeline || !currentTimeMarker) return;
+    
+    try {
+      timeline.setCustomTime(new Date(), currentTimeMarker);
+    } catch (err) {
+      console.error('Error updating current time marker:', err);
+    }
+  }
+  
+  // Snap time to appropriate interval based on zoom level
+  function snapTime(date: Date, snapTo: string): Date {
+    const snapped = new Date(date);
+    
+    switch (snapTo) {
+      case 'hour':
+        snapped.setMinutes(0, 0, 0);
+        break;
+      case 'day':
+        snapped.setHours(0, 0, 0, 0);
+        break;
+      case 'week':
+        const dayOfWeek = snapped.getDay();
+        const diff = snapped.getDate() - dayOfWeek;
+        snapped.setDate(diff);
+        snapped.setHours(0, 0, 0, 0);
+        break;
+      case 'month':
+        snapped.setDate(1);
+        snapped.setHours(0, 0, 0, 0);
+        break;
+      case 'year':
+        snapped.setMonth(0, 1);
+        snapped.setHours(0, 0, 0, 0);
+        break;
+    }
+    
+    return snapped;
+  }
+  
+  // Set zoom level and update view
+  function setZoomLevel(zoomLevel: ZoomLevel) {
+    if (!timeline) return;
+    
+    currentZoomLevel = zoomLevel;
+    
+    // Get current center time or use current time
+    const currentWindow = timeline.getWindow();
+    const centerTime = new Date((currentWindow.start.getTime() + currentWindow.end.getTime()) / 2);
+    
+    // Snap to appropriate interval
+    const snappedStart = snapTime(centerTime, zoomLevel.snapTo);
+    const snappedEnd = new Date(snappedStart.getTime() + zoomLevel.duration);
+    
+    // Set the new window
+    timeline.setWindow(snappedStart, snappedEnd, { animation: true });
+  }
+  
+  // Navigate to previous time period
+  function navigatePrevious() {
+    if (!timeline) return;
+    
+    const currentWindow = timeline.getWindow();
+    const newStart = new Date(currentWindow.start.getTime() - currentZoomLevel.duration);
+    
+    // Snap the new start time
+    const snappedStart = snapTime(newStart, currentZoomLevel.snapTo);
+    const snappedEnd = new Date(snappedStart.getTime() + currentZoomLevel.duration);
+    
+    timeline.setWindow(snappedStart, snappedEnd, { animation: true });
+  }
+  
+  // Navigate to next time period
+  function navigateNext() {
+    if (!timeline) return;
+    
+    const currentWindow = timeline.getWindow();
+    const newStart = new Date(currentWindow.start.getTime() + currentZoomLevel.duration);
+    
+    // Snap the new start time
+    const snappedStart = snapTime(newStart, currentZoomLevel.snapTo);
+    const snappedEnd = new Date(snappedStart.getTime() + currentZoomLevel.duration);
+    
+    timeline.setWindow(snappedStart, snappedEnd, { animation: true });
+  }
+  
+  // Jump to current time
+  function jumpToNow() {
+    if (!timeline) return;
+    
+    const now = new Date();
+    const snappedStart = snapTime(now, currentZoomLevel.snapTo);
+    const snappedEnd = new Date(snappedStart.getTime() + currentZoomLevel.duration);
+    
+    timeline.setWindow(snappedStart, snappedEnd, { animation: true });
+  }
 </script>
 
 <div class="timeline-container">
@@ -255,6 +415,32 @@
   {:else if data.length === 0}
     <div class="empty">No media items found</div>
   {:else}
+    <div class="timeline-controls">
+      <div class="zoom-controls">
+        <span class="control-label">Zoom:</span>
+        {#each zoomLevels as zoomLevel}
+          <button 
+            class="zoom-btn" 
+            class:active={currentZoomLevel.id === zoomLevel.id}
+            on:click={() => setZoomLevel(zoomLevel)}
+          >
+            {zoomLevel.label}
+          </button>
+        {/each}
+      </div>
+      
+      <div class="navigation-controls">
+        <button class="nav-btn" on:click={navigatePrevious} title="Previous {currentZoomLevel.label}">
+          ← Previous
+        </button>
+        <button class="nav-btn now-btn" on:click={jumpToNow} title="Jump to current time">
+          Now
+        </button>
+        <button class="nav-btn" on:click={navigateNext} title="Next {currentZoomLevel.label}">
+          Next →
+        </button>
+      </div>
+    </div>
     <div class="timeline" bind:this={container}></div>
   {/if}
 </div>
@@ -323,5 +509,100 @@
     height: 10px;
     background-color: #ff5722;
     border-radius: 50%;
+  }
+  
+  :global(.current-time-marker) {
+    border-color: #2196f3 !important;
+    border-width: 2px !important;
+    z-index: 9 !important;
+  }
+  
+  :global(.vis-custom-time.current-time-marker::after) {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -4px;
+    width: 8px;
+    height: 8px;
+    background-color: #2196f3;
+    border-radius: 50%;
+  }
+  
+  .timeline-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: #f5f5f5;
+    border-bottom: 1px solid #e0e0e0;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  
+  .zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  .control-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #666;
+    margin-right: 4px;
+  }
+  
+  .zoom-btn {
+    padding: 4px 12px;
+    border: 1px solid #ddd;
+    background-color: #fff;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .zoom-btn:hover {
+    background-color: #f0f0f0;
+    border-color: #bbb;
+  }
+  
+  .zoom-btn.active {
+    background-color: #2196f3;
+    color: white;
+    border-color: #2196f3;
+  }
+  
+  .navigation-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .nav-btn {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    background-color: #fff;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .nav-btn:hover {
+    background-color: #f0f0f0;
+    border-color: #bbb;
+  }
+  
+  .now-btn {
+    background-color: #4caf50;
+    color: white;
+    border-color: #4caf50;
+  }
+  
+  .now-btn:hover {
+    background-color: #45a049;
+    border-color: #45a049;
   }
 </style>
