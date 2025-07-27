@@ -10,6 +10,7 @@
   const dispatch = createEventDispatcher<{
     'close': void;
     'update': MediaItem;
+    'center-playhead': void;
   }>();
   
   let newLabel = '';

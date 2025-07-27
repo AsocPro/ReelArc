@@ -52,3 +52,10 @@ export interface TabConfig {
   label: string;
   disabled?: boolean;
 }
+
+export interface ZoomLevel {
+  id: string;
+  label: string;
+  duration: number; // Duration in milliseconds
+  snapTo: 'hour' | 'day' | 'week' | 'month' | 'year';
+}
