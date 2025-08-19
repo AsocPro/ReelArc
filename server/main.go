@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/adrg/frontmatter"
+	"gopkg.in/yaml.v2"
 )
 
 // TimelineItem represents a single item in the timeline
@@ -135,57 +136,11 @@ func writeMarkdownFile(filePath string, data interface{}, body string) error {
 
 	// If data is not nil, write the YAML frontmatter
 	if data != nil {
-		// Convert struct to map to ensure lowercase keys
-		jsonData, err := json.Marshal(data)
+		yamlData, err := yaml.Marshal(data)
 		if err != nil {
-			return fmt.Errorf("failed to marshal frontmatter data: %v", err)
+			return fmt.Errorf("failed to marshal frontmatter data to YAML: %v", err)
 		}
-
-		var dataMap map[string]interface{}
-		if err := json.Unmarshal(jsonData, &dataMap); err != nil {
-			return fmt.Errorf("failed to unmarshal frontmatter data: %v", err)
-		}
-
-		// Write each key-value pair in YAML format
-		for key, value := range dataMap {
-			// Convert key to lowercase
-			key = strings.ToLower(key)
-
-			// Handle different value types
-			switch v := value.(type) {
-			case nil:
-				continue // Skip nil values
-			case string:
-				if v == "" {
-					continue // Skip empty strings
-				}
-				buf.WriteString(fmt.Sprintf("%s: \"%s\"\n", key, v))
-			case []interface{}:
-				if len(v) == 0 {
-					continue // Skip empty arrays
-				}
-				buf.WriteString(fmt.Sprintf("%s:\n", key))
-				for _, item := range v {
-					switch i := item.(type) {
-					case string:
-						buf.WriteString(fmt.Sprintf("  - \"%s\"\n", i))
-					default:
-						buf.WriteString(fmt.Sprintf("  - %v\n", i))
-					}
-				}
-			case map[string]interface{}:
-				if len(v) == 0 {
-					continue // Skip empty maps
-				}
-				buf.WriteString(fmt.Sprintf("%s:\n", key))
-				for k, val := range v {
-					buf.WriteString(fmt.Sprintf("  %s: %v\n", k, val))
-				}
-			default:
-				// For numbers, booleans, etc.
-				buf.WriteString(fmt.Sprintf("%s: %v\n", key, v))
-			}
-		}
+		buf.Write(yamlData)
 	}
 
 	buf.WriteString("---\n\n")
