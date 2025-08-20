@@ -455,7 +455,7 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var allMetadata []MediaMetadata
+		allMetadata := make([]MediaMetadata, 0)
 		for _, file := range files {
 			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
 				filePath := filepath.Join(metadataDir, file.Name())
@@ -619,7 +619,7 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var allMetadata []MediaMetadata
+	allMetadata := make([]MediaMetadata, 0)
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
 			filePath := filepath.Join(metadataDir, file.Name())
