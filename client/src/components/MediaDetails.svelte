@@ -244,10 +244,17 @@
             {/each}
           </div>
         </div>
-      {:else if item.transcription}
+      {:else if item.transcription && item.type !== 'note'}
         <div class="info-item transcription">
           <span class="label">Transcription:</span>
           <div class="value transcription-text">{item.transcription}</div>
+        </div>
+      {/if}
+      
+      {#if item.notes}
+        <div class="info-item notes">
+          <span class="label">Notes:</span>
+          <div class="value notes-text">{item.notes}</div>
         </div>
       {/if}
       
@@ -375,6 +382,18 @@
     font-size: 0.875rem;
     line-height: 1.5;
     max-height: 150px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+
+  .notes-text {
+    background-color: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    padding: 0.75rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    max-height: 200px;
     overflow-y: auto;
     white-space: pre-wrap;
   }

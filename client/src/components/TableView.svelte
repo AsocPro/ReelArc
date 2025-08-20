@@ -53,7 +53,7 @@
             <th>Timestamp</th>
             <th>Duration</th>
             <th>Labels</th>
-            <th>Transcription</th>
+            <th>Notes</th>
           </tr>
         </thead>
         <tbody>

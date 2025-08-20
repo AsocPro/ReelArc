@@ -14,6 +14,7 @@ export interface MediaItem {
   duration?: number;
   filename: string;
   transcription: string;
+  notes: string;
   labels: string[];
   transcripts?: TranscriptEntry[];
 }

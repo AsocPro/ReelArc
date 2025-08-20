@@ -36,6 +36,7 @@ type MediaMetadata struct {
 	Timestamp     string            `yaml:"timestamp" json:"timestamp"`
 	Duration      float64           `yaml:"duration,omitempty" json:"duration,omitempty"`
 	Transcription string            `json:"transcription"` // This will be stored in the Markdown body
+	Notes         string            `json:"notes"`         // Same as transcription but more explicit for notes field
 	Labels        []string          `yaml:"labels" json:"labels"`
 	Transcripts   []TranscriptEntry `yaml:"transcripts,omitempty" json:"transcripts,omitempty"`
 }
@@ -210,6 +211,7 @@ func readMetadataFromFile(filePath string) (MediaMetadata, error) {
 		return metadata, readErr
 	}
 	metadata.Transcription = content
+	metadata.Notes = content // Set notes field to same content
 	
 	// Ensure Labels is never nil
 	if metadata.Labels == nil {
@@ -674,6 +676,7 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metadata.Transcription = content
+	metadata.Notes = content // Set notes field to same content
 
 	// Ensure Labels is never nil
 	if metadata.Labels == nil {
