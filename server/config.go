@@ -37,9 +37,9 @@ func loadConfig() (*Config, error) {
 	config.TranscriptionDir = filepath.Join(defaultBaseDir, "transcription")
 
 	// Parse command line flags
-	var configFile string
+	var configDir string
 	var externalMarkdownDirs string
-	flag.StringVar(&configFile, "config", "", "Path to configuration file")
+	flag.StringVar(&configDir, "config", "", "Path to configuration directory")
 	flag.StringVar(&config.MediaDir, "media-dir", config.MediaDir, "Directory for media files")
 	flag.StringVar(&config.MetadataDir, "metadata-dir", config.MetadataDir, "Directory for metadata files")
 	flag.StringVar(&config.TranscriptionDir, "transcription-dir", config.TranscriptionDir, "Directory for transcription files")
@@ -55,15 +55,18 @@ func loadConfig() (*Config, error) {
 		config.ExternalMarkdownDirs = dirs
 	}
 
-	// Check for config file path from environment variable if not set via flag
-	if configFile == "" {
-		if envConfigFile := os.Getenv("REELARC_CONFIG"); envConfigFile != "" {
-			configFile = envConfigFile
+	// Check for config directory from environment variable if not set via flag
+	if configDir == "" {
+		if envConfigDir := os.Getenv("REELARC_CONFIG"); envConfigDir != "" {
+			configDir = envConfigDir
 		} else {
-			// Default config file location
-			configFile = filepath.Join(homeDir, ".config", "reelarc", "config.yaml")
+			// Default config directory location
+			configDir = filepath.Join(homeDir, ".config", "reelarc")
 		}
 	}
+
+	// Construct config file path from config directory
+	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Load config file if it exists
 	if _, err := os.Stat(configFile); err == nil {
