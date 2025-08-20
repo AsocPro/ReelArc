@@ -215,7 +215,7 @@
       type="file" 
       id="file" 
       bind:this={fileInput} 
-      accept="image/*,video/*,audio/*"
+      accept="image/*,video/*,audio/*,.md,.markdown"
       disabled={uploading}
       multiple
       on:change={handleFileSelect}

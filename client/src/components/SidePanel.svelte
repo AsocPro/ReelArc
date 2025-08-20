@@ -209,6 +209,11 @@
             <source src={`/media/${item.filename}`} type="video/mp4">
             Your browser does not support the video element.
           </video>
+        {:else if item.type === 'note'}
+          <div class="note-preview">
+            <p>📝 Markdown Note: {item.filename}</p>
+            <p class="note-content">{item.transcription || 'Click to view content'}</p>
+          </div>
         {/if}
       </div>
       
@@ -368,6 +373,21 @@
   .media-preview audio,
   .media-preview video {
     width: 100%;
+  }
+  
+  .note-preview {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 1rem;
+  }
+  
+  .note-content {
+    margin-top: 0.5rem;
+    font-size: 0.9em;
+    color: #666;
+    max-height: 100px;
+    overflow-y: auto;
   }
   
   .media-info {

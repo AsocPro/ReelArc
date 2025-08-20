@@ -420,6 +420,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 			mediaType = "video"
 		} else if strings.HasSuffix(strings.ToLower(filename), ".jpg") || strings.HasSuffix(strings.ToLower(filename), ".jpeg") {
 			mediaType = "photo"
+		} else if strings.HasSuffix(strings.ToLower(filename), ".md") || strings.HasSuffix(strings.ToLower(filename), ".markdown") {
+			mediaType = "note"
 		}
 
 		// Try to extract timestamp from EXIF data for photos and videos
@@ -473,6 +475,19 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+		} else if mediaType == "note" {
+			// For markdown files, try to extract existing metadata from frontmatter
+			log.Printf("Processing markdown file for existing metadata: %s", filename)
+			var existingMetadata MediaMetadata
+			body, err := readMarkdownFile(filePath, &existingMetadata)
+			if err == nil && existingMetadata.Timestamp != "" {
+				// Use existing timestamp if present
+				timestamp = existingMetadata.Timestamp
+				log.Printf("Found existing timestamp in markdown frontmatter: %s", timestamp)
+			} else {
+				log.Printf("No existing timestamp found in markdown, using current time")
+			}
+			_ = body // We have the body content if needed later
 		} else {
 			log.Printf("Skipping EXIF extraction for non-photo/video file type: %s", mediaType)
 		}

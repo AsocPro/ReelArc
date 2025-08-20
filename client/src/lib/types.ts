@@ -9,7 +9,7 @@ export interface TranscriptEntry {
 
 export interface MediaItem {
   id: string;
-  type: 'photo' | 'audio' | 'video';
+  type: 'photo' | 'audio' | 'video' | 'note';
   timestamp: string;
   duration?: number;
   filename: string;

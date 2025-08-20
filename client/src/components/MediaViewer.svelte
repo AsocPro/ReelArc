@@ -28,6 +28,14 @@
         <source src={mediaPath} type="audio/mpeg">
         Your browser does not support the audio tag.
       </audio>
+    {:else if mediaType === 'note'}
+      <div class="note-viewer">
+        <h3>📝 {item.content}</h3>
+        <div class="note-content">
+          <p>Markdown note content would be displayed here</p>
+          <p><em>File: {item.mediaItem.filename}</em></p>
+        </div>
+      </div>
     {:else}
       <div class="placeholder">
         <p>Preview not available for this media type</p>

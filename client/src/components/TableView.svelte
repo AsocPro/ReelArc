@@ -30,6 +30,7 @@
       case 'photo': return '📷';
       case 'audio': return '🎵';
       case 'video': return '🎬';
+      case 'note': return '📝';
       default: return '📄';
     }
   }

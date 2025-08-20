@@ -192,6 +192,7 @@
   function getTimelineItemType(mediaType: string): string {
     switch (mediaType) {
       case 'photo':
+      case 'note':
         return 'box';
       case 'audio':
       case 'video':
@@ -524,6 +525,11 @@
   :global(.item-video) {
     background-color: #ffab91 !important;
     border-color: #FF5722 !important;
+  }
+  
+  :global(.item-note) {
+    background-color: #fff176 !important;
+    border-color: #FFC107 !important;
   }
   
   :global(.item-default) {
