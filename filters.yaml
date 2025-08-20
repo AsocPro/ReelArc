@@ -1,0 +1,242 @@
+# Quick Filters Configuration
+# This file defines reusable filter presets for the timeline viewer application
+# Supports relative dates, fixed dates, labels, and other filter criteria
+
+# Schema version for future compatibility
+version: "1.0"
+
+# Metadata about this filters configuration
+metadata:
+  name: "Timeline Filters"
+  description: "Quick access filters for media timeline viewing"
+  created: "2025-08-20T00:00:00Z"
+  updated: "2025-08-20T00:00:00Z"
+
+# Default filter to load in the UI
+defaultFilter: "today"
+# Order of filters in the UI
+displayOrder: ["today", "yesterday", "this_week", "last_7_days", "last_30_days", "personal_photos", "work_content", "notes_only"]
+# Quick filter presets
+filters:
+  # Time-based relative filters
+  - id: "today"
+    name: "Today"
+    description: "Show items from today"
+    type: "relative"
+    icon: "📅"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "day"
+        offset: 0
+        anchor: "start" # start or end of period
+      labels: []
+      mediaTypes: []
+    
+  - id: "yesterday"
+    name: "Yesterday"
+    description: "Show items from yesterday"
+    type: "relative"
+    icon: "⏮️"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "day"
+        offset: -1
+        anchor: "start"
+      labels: []
+      mediaTypes: []
+    
+  - id: "this_week"
+    name: "This Week"
+    description: "Show items from current week"
+    type: "relative"
+    icon: "📅"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "week"
+        offset: 0
+        anchor: "start"
+      labels: []
+      mediaTypes: []
+    
+  - id: "last_week"
+    name: "Last Week"
+    description: "Show items from previous week"
+    type: "relative"
+    icon: "⏮️"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "week"
+        offset: -1
+        anchor: "start"
+      labels: []
+      mediaTypes: []
+    
+  - id: "last_7_days"
+    name: "Last 7 Days"
+    description: "Show items from the last 7 days"
+    type: "relative"
+    icon: "🗓️"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "days"
+        offset: -7
+        anchor: "start"
+      labels: []
+      mediaTypes: []
+    
+  - id: "last_30_days"
+    name: "Last 30 Days"
+    description: "Show items from the last 30 days"
+    type: "relative"
+    icon: "📆"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "days"
+        offset: -30
+        anchor: "start"
+      labels: []
+      mediaTypes: []
+    
+  - id: "this_month"
+    name: "This Month"
+    description: "Show items from current month"
+    type: "relative"
+    icon: "🗓️"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "month"
+        offset: 0
+        anchor: "start"
+      labels: []
+      mediaTypes: []
+    
+  - id: "last_month"
+    name: "Last Month"
+    description: "Show items from previous month"
+    type: "relative"
+    icon: "⏮️"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "month"
+        offset: -1
+        anchor: "start"
+      labels: []
+      mediaTypes: []
+
+  # Fixed date filters
+  - id: "vacation_2023"
+    name: "Summer Vacation 2023"
+    description: "Photos and videos from summer vacation"
+    type: "fixed"
+    icon: "🏖️"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "fixed"
+        startDate: "2023-07-15T00:00:00Z"
+        endDate: "2023-07-30T23:59:59Z"
+      labels: ["vacation", "travel"]
+      mediaTypes: ["photo", "video"]
+
+  - id: "work_project_q4"
+    name: "Q4 Work Project"
+    description: "Work-related content from Q4"
+    type: "fixed"
+    icon: "💼"
+    enabled: false
+    criteria:
+      dateRange:
+        type: "fixed"
+        startDate: "2023-10-01T00:00:00Z"
+        endDate: "2023-12-31T23:59:59Z"
+      labels: ["work", "project", "meeting"]
+      mediaTypes: ["audio", "note"]
+
+  # Label-based filters
+  - id: "personal_photos"
+    name: "Personal Photos"
+    description: "All personal photos and videos"
+    type: "label"
+    icon: "📸"
+    enabled: true
+    criteria:
+      dateRange: null
+      labels: ["personal", "family", "friends"]
+      mediaTypes: ["photo", "video"]
+    
+  - id: "work_content"
+    name: "Work Content"
+    description: "All work-related media"
+    type: "label"
+    icon: "💼"
+    enabled: true
+    criteria:
+      dateRange: null
+      labels: ["work", "meeting", "presentation"]
+      mediaTypes: []
+    
+  - id: "notes_only"
+    name: "Notes Only"
+    description: "Show only markdown notes"
+    type: "media_type"
+    icon: "📝"
+    enabled: true
+    criteria:
+      dateRange: null
+      labels: []
+      mediaTypes: ["note"]
+    
+  - id: "audio_recordings"
+    name: "Audio Recordings"
+    description: "Show only audio recordings"
+    type: "media_type"
+    icon: "🎵"
+    enabled: true
+    criteria:
+      dateRange: null
+      labels: []
+      mediaTypes: ["audio"]
+
+  # Complex combined filters
+  - id: "recent_work_meetings"
+    name: "Recent Work Meetings"
+    description: "Audio and notes from work meetings in the last 14 days"
+    type: "complex"
+    icon: "🎤"
+    enabled: true
+    criteria:
+      dateRange:
+        type: "relative"
+        period: "days"
+        count: 14
+        direction: "backward"
+      labels: ["work", "meeting"]
+      mediaTypes: ["audio", "note"]
+    
+  - id: "starred_content"
+    name: "Starred Content"
+    description: "Items marked as important or favorites"
+    type: "label"
+    icon: "⭐"
+    enabled: true
+    criteria:
+      dateRange: null
+      labels: ["starred", "important", "favorite"]
+      mediaTypes: []
+
