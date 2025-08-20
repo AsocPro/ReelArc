@@ -69,10 +69,15 @@
         if (state.isPlaying && !playheadLine) {
           // Create playhead marker if it doesn't exist
           createPlayheadMarker();
+        } else if (!state.isPlaying && playheadLine) {
+          // Remove playhead marker when not playing
+          removePlayheadMarker();
         }
         
-        // Update playhead position
-        updatePlayheadPosition(state);
+        // Update playhead position if playing
+        if (state.isPlaying) {
+          updatePlayheadPosition(state);
+        }
       }
     });
     
@@ -233,12 +238,26 @@
       timeline.setCustomTimeMarker('Media Playhead', playheadLine, false);
       
       // Style the playhead line
-      const playheadElement = container.querySelector(`.vis-custom-time.${playheadLine}`);
-      if (playheadElement) {
-        playheadElement.classList.add('playhead-marker');
-      }
+      setTimeout(() => {
+        const playheadElement = container.querySelector(`[data-id="${playheadLine}"]`);
+        if (playheadElement) {
+          playheadElement.classList.add('playhead-marker');
+        }
+      }, 100);
     } catch (err) {
       console.error('Error creating playhead marker:', err);
+    }
+  }
+  
+  // Remove the playhead marker
+  function removePlayheadMarker() {
+    if (!timeline || !playheadLine) return;
+    
+    try {
+      timeline.removeCustomTime(playheadLine);
+      playheadLine = null;
+    } catch (err) {
+      console.error('Error removing playhead marker:', err);
     }
   }
   
@@ -513,20 +532,23 @@
   }
   
   :global(.playhead-marker) {
-    border-color: #ff5722 !important;
-    border-width: 2px !important;
+    background-color: #ff0000 !important;
+    border-color: #ff0000 !important;
+    border-width: 3px !important;
     z-index: 10 !important;
   }
   
-  :global(.vis-custom-time.playhead-marker::after) {
+  :global(.playhead-marker::after) {
     content: '';
     position: absolute;
-    top: 0;
-    left: -5px;
-    width: 10px;
-    height: 10px;
-    background-color: #ff5722;
+    top: -5px;
+    left: -6px;
+    width: 12px;
+    height: 12px;
+    background-color: #ff0000 !important;
+    border: 2px solid #ffffff !important;
     border-radius: 50%;
+    z-index: 11 !important;
   }
   
   :global(.current-time-marker) {
