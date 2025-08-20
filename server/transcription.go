@@ -29,9 +29,8 @@ type TranscriptionStatus struct {
 	Timestamp string `json:"timestamp"`
 }
 
-const (
-	transcriptsDir = "./data/transcripts"
-)
+// Global transcription directory variable (set from config)
+var transcriptsDir string
 
 var (
 	// Global transcription queue
@@ -45,6 +44,9 @@ var (
 
 // Initialize transcription system
 func InitTranscriptionSystem() {
+	// Set the transcripts directory from config
+	transcriptsDir = AppConfig.TranscriptionDir
+
 	// Ensure transcripts directory exists
 	if err := os.MkdirAll(transcriptsDir, 0755); err != nil {
 		log.Fatalf("Failed to create transcripts directory: %v", err)

@@ -62,18 +62,34 @@ type TranscriptEntry struct {
 }
 
 const (
-	dataDir      = "./data"
-	mediaDir     = "./data/media"
-	metadataDir  = "./data/metadata"
-	timelineDir  = "./data/timeline"
-	timelineFile = "./data/timeline.md"
-	clientDir    = "./client/dist"
+	clientDir = "./client/dist"
 
 	// File extensions
 	mdExt = ".md"
 )
 
+// Global directory variables (set from config)
+var (
+	mediaDir     string
+	metadataDir  string
+	timelineDir  string
+	timelineFile string
+)
+
 func main() {
+	// Load configuration
+	config, err := loadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	AppConfig = config
+
+	// Set global directory variables from config
+	mediaDir = config.MediaDir
+	metadataDir = config.MetadataDir
+	timelineDir = filepath.Join(config.MetadataDir, "timeline")
+	timelineFile = filepath.Join(config.MetadataDir, "timeline.md")
+
 	// Ensure data directories exist
 	ensureDirectories()
 
@@ -101,7 +117,7 @@ func main() {
 }
 
 func ensureDirectories() {
-	dirs := []string{dataDir, mediaDir, metadataDir, timelineDir}
+	dirs := []string{mediaDir, metadataDir, timelineDir, AppConfig.TranscriptionDir}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Fatalf("Failed to create directory %s: %v", dir, err)
@@ -165,7 +181,6 @@ func handleTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read from individual Markdown files in the timeline directory
-	timelineDir := filepath.Join(dataDir, "timeline")
 	files, err := os.ReadDir(timelineDir)
 	if err != nil {
 		http.Error(w, "Failed to read timeline data", http.StatusInternalServerError)
