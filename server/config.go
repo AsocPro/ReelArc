@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
 
 // Config represents the application configuration
 type Config struct {
-	MediaDir         string `yaml:"media_dir"`
-	MetadataDir      string `yaml:"metadata_dir"`
-	TranscriptionDir string `yaml:"transcription_dir"`
+	MediaDir         string   `yaml:"media_dir"`
+	MetadataDir      string   `yaml:"metadata_dir"`
+	TranscriptionDir string   `yaml:"transcription_dir"`
+	ExternalMarkdownDirs []string `yaml:"external_markdown_dirs"`
 }
 
 // AppConfig holds the global configuration
@@ -36,11 +38,22 @@ func loadConfig() (*Config, error) {
 
 	// Parse command line flags
 	var configFile string
+	var externalMarkdownDirs string
 	flag.StringVar(&configFile, "config", "", "Path to configuration file")
 	flag.StringVar(&config.MediaDir, "media-dir", config.MediaDir, "Directory for media files")
 	flag.StringVar(&config.MetadataDir, "metadata-dir", config.MetadataDir, "Directory for metadata files")
 	flag.StringVar(&config.TranscriptionDir, "transcription-dir", config.TranscriptionDir, "Directory for transcription files")
+	flag.StringVar(&externalMarkdownDirs, "external-markdown-dirs", "", "Comma-separated list of directories to monitor for external markdown files")
 	flag.Parse()
+
+	// Parse external markdown directories from command line flag
+	if externalMarkdownDirs != "" {
+		dirs := strings.Split(externalMarkdownDirs, ",")
+		for i, dir := range dirs {
+			dirs[i] = strings.TrimSpace(dir)
+		}
+		config.ExternalMarkdownDirs = dirs
+	}
 
 	// Check for config file path from environment variable if not set via flag
 	if configFile == "" {
@@ -69,6 +82,13 @@ func loadConfig() (*Config, error) {
 	if envTranscriptionDir := os.Getenv("REELARC_TRANSCRIPTION_DIR"); envTranscriptionDir != "" {
 		config.TranscriptionDir = envTranscriptionDir
 	}
+	if envExternalMarkdownDirs := os.Getenv("REELARC_EXTERNAL_MARKDOWN_DIRS"); envExternalMarkdownDirs != "" {
+		dirs := strings.Split(envExternalMarkdownDirs, ",")
+		for i, dir := range dirs {
+			dirs[i] = strings.TrimSpace(dir)
+		}
+		config.ExternalMarkdownDirs = dirs
+	}
 
 	// Ensure all directories are absolute paths
 	config.MediaDir, err = filepath.Abs(config.MediaDir)
@@ -82,6 +102,15 @@ func loadConfig() (*Config, error) {
 	config.TranscriptionDir, err = filepath.Abs(config.TranscriptionDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve transcription directory path: %v", err)
+	}
+	
+	// Resolve external markdown directories to absolute paths
+	for i, dir := range config.ExternalMarkdownDirs {
+		absDir, err := filepath.Abs(dir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve external markdown directory path %s: %v", dir, err)
+		}
+		config.ExternalMarkdownDirs[i] = absDir
 	}
 
 	return config, nil

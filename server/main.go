@@ -142,6 +142,142 @@ func readMarkdownFile(filePath string, data interface{}) (string, error) {
 	return string(body), nil
 }
 
+// scanMarkdownFiles scans both metadata directory and external markdown directories for markdown files
+func scanMarkdownFiles(filterFunc func(MediaMetadata) bool) ([]MediaMetadata, error) {
+	allMetadata := make([]MediaMetadata, 0)
+	
+	// Scan the main metadata directory
+	files, err := os.ReadDir(metadataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read metadata directory: %v", err)
+	}
+	
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+			filePath := filepath.Join(metadataDir, file.Name())
+			metadata, err := readMetadataFromFile(filePath)
+			if err != nil {
+				log.Printf("Failed to read metadata file %s: %v", file.Name(), err)
+				continue
+			}
+			
+			if filterFunc == nil || filterFunc(metadata) {
+				allMetadata = append(allMetadata, metadata)
+			}
+		}
+	}
+	
+	// Scan external markdown directories
+	for _, externalDir := range AppConfig.ExternalMarkdownDirs {
+		// Check if directory exists
+		if _, err := os.Stat(externalDir); os.IsNotExist(err) {
+			log.Printf("External markdown directory does not exist: %s", externalDir)
+			continue
+		}
+		
+		files, err := os.ReadDir(externalDir)
+		if err != nil {
+			log.Printf("Failed to read external markdown directory %s: %v", externalDir, err)
+			continue
+		}
+		
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+				filePath := filepath.Join(externalDir, file.Name())
+				metadata, err := readMetadataFromFile(filePath)
+				if err != nil {
+					log.Printf("Failed to read external markdown file %s: %v", file.Name(), err)
+					continue
+				}
+				
+				if filterFunc == nil || filterFunc(metadata) {
+					allMetadata = append(allMetadata, metadata)
+				}
+			}
+		}
+	}
+	
+	return allMetadata, nil
+}
+
+// readMetadataFromFile reads metadata from a markdown file
+func readMetadataFromFile(filePath string) (MediaMetadata, error) {
+	var metadata MediaMetadata
+	
+	// Read Markdown file with frontmatter
+	content, readErr := readMarkdownFile(filePath, &metadata)
+	if readErr != nil {
+		return metadata, readErr
+	}
+	metadata.Transcription = content
+	
+	// Ensure Labels is never nil
+	if metadata.Labels == nil {
+		metadata.Labels = []string{}
+	}
+	
+	return metadata, nil
+}
+
+// findMetadataFileByID searches for a metadata file by ID in both metadata directory and external directories
+func findMetadataFileByID(id string) (string, MediaMetadata, error) {
+	var metadata MediaMetadata
+	
+	// Search in main metadata directory
+	files, err := os.ReadDir(metadataDir)
+	if err != nil {
+		return "", metadata, fmt.Errorf("failed to read metadata directory: %v", err)
+	}
+	
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+			filePath := filepath.Join(metadataDir, file.Name())
+			
+			tempMetadata, readErr := readMetadataFromFile(filePath)
+			if readErr != nil {
+				log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
+				continue
+			}
+			
+			if tempMetadata.ID == id {
+				return filePath, tempMetadata, nil
+			}
+		}
+	}
+	
+	// Search in external markdown directories
+	for _, externalDir := range AppConfig.ExternalMarkdownDirs {
+		// Check if directory exists
+		if _, err := os.Stat(externalDir); os.IsNotExist(err) {
+			continue
+		}
+		
+		files, err := os.ReadDir(externalDir)
+		if err != nil {
+			log.Printf("Failed to read external markdown directory %s: %v", externalDir, err)
+			continue
+		}
+		
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+				filePath := filepath.Join(externalDir, file.Name())
+				
+				tempMetadata, readErr := readMetadataFromFile(filePath)
+				if readErr != nil {
+					log.Printf("Failed to read external markdown file %s: %v", file.Name(), readErr)
+					continue
+				}
+				
+				if tempMetadata.ID == id {
+					return filePath, tempMetadata, nil
+				}
+			}
+		}
+	}
+	
+	return "", metadata, fmt.Errorf("metadata with ID %s not found", id)
+}
+
 // Helper function to write a Markdown file with frontmatter
 func writeMarkdownFile(filePath string, data interface{}, body string) error {
 	// Create a buffer to store the file content
@@ -448,70 +584,52 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Read all Markdown files from the metadata directory
-		files, err := os.ReadDir(metadataDir)
-		if err != nil {
-			http.Error(w, "Failed to read metadata directory", http.StatusInternalServerError)
-			return
-		}
-
-		allMetadata := make([]MediaMetadata, 0)
-		for _, file := range files {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
-				filePath := filepath.Join(metadataDir, file.Name())
-
-				var metadata MediaMetadata
-
-				// Read Markdown file with frontmatter
-				content, readErr := readMarkdownFile(filePath, &metadata)
-				if readErr != nil {
-					log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
-					continue
-				}
-				metadata.Transcription = content
-
-				// Ensure Labels is never nil
-				if metadata.Labels == nil {
-					metadata.Labels = []string{}
-				}
-				// Apply date range filtering
-				if startDate != "" || endDate != "" {
-					itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
-					if parseErr != nil {
-						log.Printf("Failed to parse timestamp for %s: %v", file.Name(), parseErr)
-						continue
-					}
-
-					// Check if item falls within date range
-					if startDate != "" && itemTime.Before(startTime) {
-						continue
-					}
-					if endDate != "" && itemTime.After(endTime) {
-						continue
-					}
+		// Create a filter function based on query parameters
+		filterFunc := func(metadata MediaMetadata) bool {
+			// Apply date range filtering
+			if startDate != "" || endDate != "" {
+				itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
+				if parseErr != nil {
+					log.Printf("Failed to parse timestamp: %v", parseErr)
+					return false
 				}
 
-				// Apply label filtering
-				if len(filterLabels) > 0 {
-					hasMatchingLabel := false
-					for _, filterLabel := range filterLabels {
-						for _, itemLabel := range metadata.Labels {
-							if strings.EqualFold(strings.TrimSpace(itemLabel), filterLabel) {
-								hasMatchingLabel = true
-								break
-							}
-						}
-						if hasMatchingLabel {
+				// Check if item falls within date range
+				if startDate != "" && itemTime.Before(startTime) {
+					return false
+				}
+				if endDate != "" && itemTime.After(endTime) {
+					return false
+				}
+			}
+
+			// Apply label filtering
+			if len(filterLabels) > 0 {
+				hasMatchingLabel := false
+				for _, filterLabel := range filterLabels {
+					for _, itemLabel := range metadata.Labels {
+						if strings.EqualFold(strings.TrimSpace(itemLabel), filterLabel) {
+							hasMatchingLabel = true
 							break
 						}
 					}
-					if !hasMatchingLabel {
-						continue
+					if hasMatchingLabel {
+						break
 					}
 				}
-
-				allMetadata = append(allMetadata, metadata)
+				if !hasMatchingLabel {
+					return false
+				}
 			}
+
+			return true
+		}
+
+		// Use the new scanning function to get all metadata files
+		allMetadata, err := scanMarkdownFiles(filterFunc)
+		if err != nil {
+			http.Error(w, "Failed to read metadata files", http.StatusInternalServerError)
+			return
 		}
 
 		// Marshal the combined metadata
@@ -612,70 +730,52 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Read all files from the metadata directory
-	files, err := os.ReadDir(metadataDir)
-	if err != nil {
-		http.Error(w, "Failed to read metadata directory", http.StatusInternalServerError)
-		return
-	}
-
-	allMetadata := make([]MediaMetadata, 0)
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
-			filePath := filepath.Join(metadataDir, file.Name())
-
-			var metadata MediaMetadata
-
-			// Read Markdown file with frontmatter
-			content, readErr := readMarkdownFile(filePath, &metadata)
-			if readErr != nil {
-				log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
-				continue
-			}
-			metadata.Transcription = content
-
-			// Ensure Labels is never nil
-			if metadata.Labels == nil {
-				metadata.Labels = []string{}
-			}
-			// Apply date range filtering
-			if startDate != "" || endDate != "" {
-				itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
-				if parseErr != nil {
-					log.Printf("Failed to parse timestamp for %s: %v", file.Name(), parseErr)
-					continue
-				}
-
-				// Check if item falls within date range
-				if startDate != "" && itemTime.Before(startTime) {
-					continue
-				}
-				if endDate != "" && itemTime.After(endTime) {
-					continue
-				}
+	// Create a filter function based on query parameters
+	filterFunc := func(metadata MediaMetadata) bool {
+		// Apply date range filtering
+		if startDate != "" || endDate != "" {
+			itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
+			if parseErr != nil {
+				log.Printf("Failed to parse timestamp: %v", parseErr)
+				return false
 			}
 
-			// Apply label filtering
-			if len(filterLabels) > 0 {
-				hasMatchingLabel := false
-				for _, filterLabel := range filterLabels {
-					for _, itemLabel := range metadata.Labels {
-						if strings.EqualFold(strings.TrimSpace(itemLabel), filterLabel) {
-							hasMatchingLabel = true
-							break
-						}
-					}
-					if hasMatchingLabel {
+			// Check if item falls within date range
+			if startDate != "" && itemTime.Before(startTime) {
+				return false
+			}
+			if endDate != "" && itemTime.After(endTime) {
+				return false
+			}
+		}
+
+		// Apply label filtering
+		if len(filterLabels) > 0 {
+			hasMatchingLabel := false
+			for _, filterLabel := range filterLabels {
+				for _, itemLabel := range metadata.Labels {
+					if strings.EqualFold(strings.TrimSpace(itemLabel), filterLabel) {
+						hasMatchingLabel = true
 						break
 					}
 				}
-				if !hasMatchingLabel {
-					continue
+				if hasMatchingLabel {
+					break
 				}
 			}
-
-			allMetadata = append(allMetadata, metadata)
+			if !hasMatchingLabel {
+				return false
+			}
 		}
+
+		return true
+	}
+
+	// Use the new scanning function to get all metadata files
+	allMetadata, err := scanMarkdownFiles(filterFunc)
+	if err != nil {
+		http.Error(w, "Failed to read metadata files", http.StatusInternalServerError)
+		return
 	}
 
 	// Marshal the combined metadata
@@ -746,37 +846,13 @@ func handleUpdateLabels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find the metadata file by ID
-	// We need to search through all metadata files to find the one with matching ID
-	files, err := os.ReadDir(metadataDir)
+	targetFile, metadata, err := findMetadataFileByID(req.ID)
 	if err != nil {
-		http.Error(w, "Failed to read metadata directory", http.StatusInternalServerError)
-		return
-	}
-
-	var targetFile string
-	var metadata MediaMetadata
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
-			filePath := filepath.Join(metadataDir, file.Name())
-
-			var tempMetadata MediaMetadata
-			content, readErr := readMarkdownFile(filePath, &tempMetadata)
-			if readErr != nil {
-				log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
-				continue
-			}
-
-			if tempMetadata.ID == req.ID {
-				targetFile = filePath
-				metadata = tempMetadata
-				metadata.Transcription = content
-				break
-			}
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Media item not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to search for metadata", http.StatusInternalServerError)
 		}
-	}
-
-	if targetFile == "" {
-		http.Error(w, "Media item not found", http.StatusNotFound)
 		return
 	}
 
