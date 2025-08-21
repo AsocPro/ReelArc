@@ -62,16 +62,30 @@ type TranscriptEntry struct {
 	Metadata string  `yaml:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
+// RelativeDate represents relative date parameters
+type RelativeDate struct {
+	Period    string `json:"period"`
+	Offset    int    `json:"offset,omitempty"`
+	Anchor    string `json:"anchor,omitempty"`
+	Count     int    `json:"count,omitempty"`
+	Direction string `json:"direction,omitempty"`
+}
+
 // FilterDateRange represents date range criteria for filters
 type FilterDateRange struct {
 	Type      string `yaml:"type" json:"type"`
+	// For fixed dates
+	StartDate string `yaml:"startDate,omitempty" json:"startDate,omitempty"`
+	EndDate   string `yaml:"endDate,omitempty" json:"endDate,omitempty"`
+	// For simple relative dates (backward compatibility)
 	Period    string `yaml:"period,omitempty" json:"period,omitempty"`
 	Offset    int    `yaml:"offset,omitempty" json:"offset,omitempty"`
 	Anchor    string `yaml:"anchor,omitempty" json:"anchor,omitempty"`
-	StartDate string `yaml:"startDate,omitempty" json:"startDate,omitempty"`
-	EndDate   string `yaml:"endDate,omitempty" json:"endDate,omitempty"`
 	Count     int    `yaml:"count,omitempty" json:"count,omitempty"`
 	Direction string `yaml:"direction,omitempty" json:"direction,omitempty"`
+	// For complex relative date ranges
+	StartRelative *RelativeDate `json:"startRelative,omitempty"`
+	EndRelative   *RelativeDate `json:"endRelative,omitempty"`
 }
 
 // FilterCriteria represents filter criteria
@@ -203,59 +217,122 @@ func applyRelativeDateRange(itemTime time.Time, dateRange FilterDateRange) bool 
 	
 	var startTime, endTime time.Time
 	
-	switch dateRange.Period {
-	case "day":
-		if dateRange.Offset == 0 {
-			// Today
-			startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-			endTime = startTime.Add(24 * time.Hour)
-		} else {
-			// Specific day offset
-			targetDate := now.AddDate(0, 0, dateRange.Offset)
-			startTime = time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, targetDate.Location())
-			endTime = startTime.Add(24 * time.Hour)
+	// Check if this is a range with separate start and end relative dates
+	if dateRange.StartRelative != nil && dateRange.EndRelative != nil {
+		// Calculate start time from startRelative
+		startTime = calculateRelativeTime(now, *dateRange.StartRelative)
+		// Calculate end time from endRelative  
+		endTime = calculateRelativeTime(now, *dateRange.EndRelative)
+		
+		// Ensure startTime is before endTime
+		if startTime.After(endTime) {
+			startTime, endTime = endTime, startTime
 		}
-	case "days":
-		if dateRange.Count > 0 {
-			// Last N days (using count)
-			if dateRange.Direction == "backward" || dateRange.Direction == "" {
-				endTime = now
-				startTime = now.AddDate(0, 0, -dateRange.Count)
+	} else {
+		// Backward compatibility: use the original single-period logic
+		switch dateRange.Period {
+		case "day":
+			if dateRange.Offset == 0 {
+				// Today
+				startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+				endTime = startTime.Add(24 * time.Hour)
+			} else {
+				// Specific day offset
+				targetDate := now.AddDate(0, 0, dateRange.Offset)
+				startTime = time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, targetDate.Location())
+				endTime = startTime.Add(24 * time.Hour)
 			}
-		} else if dateRange.Offset < 0 {
-			// Last N days (using offset)
-			endTime = now
-			startTime = now.AddDate(0, 0, dateRange.Offset)
+		case "days":
+			if dateRange.Count > 0 {
+				// Last N days (using count)
+				if dateRange.Direction == "backward" || dateRange.Direction == "" {
+					endTime = now
+					startTime = now.AddDate(0, 0, -dateRange.Count)
+				}
+			} else if dateRange.Offset < 0 {
+				// Last N days (using offset)
+				endTime = now
+				startTime = now.AddDate(0, 0, dateRange.Offset)
+			}
+		case "week":
+			weekStart := getWeekStart(now)
+			if dateRange.Offset == 0 {
+				// This week
+				startTime = weekStart
+				endTime = weekStart.AddDate(0, 0, 7)
+			} else {
+				// Week offset
+				targetWeek := weekStart.AddDate(0, 0, dateRange.Offset*7)
+				startTime = targetWeek
+				endTime = targetWeek.AddDate(0, 0, 7)
+			}
+		case "month":
+			if dateRange.Offset == 0 {
+				// This month
+				startTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+				endTime = startTime.AddDate(0, 1, 0)
+			} else {
+				// Month offset
+				targetMonth := now.AddDate(0, dateRange.Offset, 0)
+				startTime = time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
+				endTime = startTime.AddDate(0, 1, 0)
+			}
+		default:
+			log.Printf("Unknown period type: %s", dateRange.Period)
+			return false
 		}
-	case "week":
-		weekStart := getWeekStart(now)
-		if dateRange.Offset == 0 {
-			// This week
-			startTime = weekStart
-			endTime = weekStart.AddDate(0, 0, 7)
-		} else {
-			// Week offset
-			targetWeek := weekStart.AddDate(0, 0, dateRange.Offset*7)
-			startTime = targetWeek
-			endTime = targetWeek.AddDate(0, 0, 7)
-		}
-	case "month":
-		if dateRange.Offset == 0 {
-			// This month
-			startTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-			endTime = startTime.AddDate(0, 1, 0)
-		} else {
-			// Month offset
-			targetMonth := now.AddDate(0, dateRange.Offset, 0)
-			startTime = time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
-			endTime = startTime.AddDate(0, 1, 0)
-		}
-	default:
-		log.Printf("Unknown period type: %s", dateRange.Period)
-		return false
 	}
 
 	return (itemTime.After(startTime) || itemTime.Equal(startTime)) && itemTime.Before(endTime)
+}
+
+// calculateRelativeTime calculates a specific time based on relative parameters
+func calculateRelativeTime(now time.Time, relative RelativeDate) time.Time {
+	switch relative.Period {
+	case "day":
+		if relative.Offset == 0 {
+			// Today
+			return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		} else {
+			// Specific day offset
+			targetDate := now.AddDate(0, 0, relative.Offset)
+			return time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, targetDate.Location())
+		}
+	case "days":
+		if relative.Count > 0 {
+			// N days in specified direction
+			if relative.Direction == "backward" || relative.Direction == "" {
+				return now.AddDate(0, 0, -relative.Count)
+			} else {
+				return now.AddDate(0, 0, relative.Count)
+			}
+		} else if relative.Offset != 0 {
+			// Days offset
+			return now.AddDate(0, 0, relative.Offset)
+		}
+		return now
+	case "week":
+		weekStart := getWeekStart(now)
+		if relative.Offset == 0 {
+			// This week
+			return weekStart
+		} else {
+			// Week offset
+			return weekStart.AddDate(0, 0, relative.Offset*7)
+		}
+	case "month":
+		if relative.Offset == 0 {
+			// This month
+			return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		} else {
+			// Month offset
+			targetMonth := now.AddDate(0, relative.Offset, 0)
+			return time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
+		}
+	default:
+		log.Printf("Unknown period type: %s", relative.Period)
+		return now
+	}
 }
 
 // getWeekStart returns the start of the week (Monday) for the given time
@@ -842,6 +919,7 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 		endDate := queryParams.Get("endDate")
 		labelsParam := queryParams.Get("labels")
 		mediaTypesParam := queryParams.Get("mediaTypes")
+		dateRangeFilterParam := queryParams.Get("dateRangeFilter")
 
 		var filterFunc func(MediaMetadata) bool
 
@@ -897,7 +975,16 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 
 			// Create legacy filter criteria
 			var legacyDateRange *FilterDateRange
-			if startDate != "" || endDate != "" {
+			
+			// Check for relative date range filter parameter
+			if dateRangeFilterParam != "" {
+				var dateRangeFilter FilterDateRange
+				if err := json.Unmarshal([]byte(dateRangeFilterParam), &dateRangeFilter); err != nil {
+					http.Error(w, "Invalid dateRangeFilter format", http.StatusBadRequest)
+					return
+				}
+				legacyDateRange = &dateRangeFilter
+			} else if startDate != "" || endDate != "" {
 				legacyDateRange = &FilterDateRange{
 					Type:      "fixed",
 					StartDate: startDate,
@@ -996,6 +1083,7 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 	endDate := queryParams.Get("endDate")
 	labelsParam := queryParams.Get("labels")
 	mediaTypesParam := queryParams.Get("mediaTypes")
+	dateRangeFilterParam := queryParams.Get("dateRangeFilter")
 
 	var filterFunc func(MediaMetadata) bool
 
@@ -1051,7 +1139,16 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 
 		// Create legacy filter criteria
 		var legacyDateRange *FilterDateRange
-		if startDate != "" || endDate != "" {
+		
+		// Check for relative date range filter parameter
+		if dateRangeFilterParam != "" {
+			var dateRangeFilter FilterDateRange
+			if err := json.Unmarshal([]byte(dateRangeFilterParam), &dateRangeFilter); err != nil {
+				http.Error(w, "Invalid dateRangeFilter format", http.StatusBadRequest)
+				return
+			}
+			legacyDateRange = &dateRangeFilter
+		} else if startDate != "" || endDate != "" {
 			legacyDateRange = &FilterDateRange{
 				Type:      "fixed",
 				StartDate: startDate,
