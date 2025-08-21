@@ -125,6 +125,213 @@ var (
 	configDir    string
 )
 
+// ApplyFilterCriteria applies FilterCriteria to a MediaMetadata item
+func ApplyFilterCriteria(metadata MediaMetadata, criteria FilterCriteria) bool {
+	// Apply date range filtering
+	if criteria.DateRange != nil {
+		if !applyDateRangeFilter(metadata, *criteria.DateRange) {
+			return false
+		}
+	}
+
+	// Apply label filtering
+	if len(criteria.Labels) > 0 {
+		if !applyLabelsFilter(metadata, criteria.Labels) {
+			return false
+		}
+	}
+
+	// Apply media type filtering
+	if len(criteria.MediaTypes) > 0 {
+		if !applyMediaTypesFilter(metadata, criteria.MediaTypes) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// applyDateRangeFilter applies date range filtering to a metadata item
+func applyDateRangeFilter(metadata MediaMetadata, dateRange FilterDateRange) bool {
+	itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
+	if parseErr != nil {
+		log.Printf("Failed to parse timestamp: %v", parseErr)
+		return false
+	}
+
+	switch dateRange.Type {
+	case "fixed":
+		return applyFixedDateRange(itemTime, dateRange)
+	case "relative":
+		return applyRelativeDateRange(itemTime, dateRange)
+	default:
+		log.Printf("Unknown date range type: %s", dateRange.Type)
+		return false
+	}
+}
+
+// applyFixedDateRange applies fixed date range filtering
+func applyFixedDateRange(itemTime time.Time, dateRange FilterDateRange) bool {
+	if dateRange.StartDate != "" {
+		startTime, err := time.Parse(time.RFC3339, dateRange.StartDate)
+		if err != nil {
+			log.Printf("Failed to parse start date: %v", err)
+			return false
+		}
+		if itemTime.Before(startTime) {
+			return false
+		}
+	}
+
+	if dateRange.EndDate != "" {
+		endTime, err := time.Parse(time.RFC3339, dateRange.EndDate)
+		if err != nil {
+			log.Printf("Failed to parse end date: %v", err)
+			return false
+		}
+		if itemTime.After(endTime) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// applyRelativeDateRange applies relative date range filtering
+func applyRelativeDateRange(itemTime time.Time, dateRange FilterDateRange) bool {
+	now := time.Now()
+	
+	var startTime, endTime time.Time
+	
+	switch dateRange.Period {
+	case "day":
+		if dateRange.Offset == 0 {
+			// Today
+			startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			endTime = startTime.Add(24 * time.Hour)
+		} else {
+			// Specific day offset
+			targetDate := now.AddDate(0, 0, dateRange.Offset)
+			startTime = time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, targetDate.Location())
+			endTime = startTime.Add(24 * time.Hour)
+		}
+	case "days":
+		if dateRange.Count > 0 {
+			// Last N days (using count)
+			if dateRange.Direction == "backward" || dateRange.Direction == "" {
+				endTime = now
+				startTime = now.AddDate(0, 0, -dateRange.Count)
+			}
+		} else if dateRange.Offset < 0 {
+			// Last N days (using offset)
+			endTime = now
+			startTime = now.AddDate(0, 0, dateRange.Offset)
+		}
+	case "week":
+		weekStart := getWeekStart(now)
+		if dateRange.Offset == 0 {
+			// This week
+			startTime = weekStart
+			endTime = weekStart.AddDate(0, 0, 7)
+		} else {
+			// Week offset
+			targetWeek := weekStart.AddDate(0, 0, dateRange.Offset*7)
+			startTime = targetWeek
+			endTime = targetWeek.AddDate(0, 0, 7)
+		}
+	case "month":
+		if dateRange.Offset == 0 {
+			// This month
+			startTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+			endTime = startTime.AddDate(0, 1, 0)
+		} else {
+			// Month offset
+			targetMonth := now.AddDate(0, dateRange.Offset, 0)
+			startTime = time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
+			endTime = startTime.AddDate(0, 1, 0)
+		}
+	default:
+		log.Printf("Unknown period type: %s", dateRange.Period)
+		return false
+	}
+
+	return (itemTime.After(startTime) || itemTime.Equal(startTime)) && itemTime.Before(endTime)
+}
+
+// getWeekStart returns the start of the week (Monday) for the given time
+func getWeekStart(t time.Time) time.Time {
+	weekday := int(t.Weekday())
+	if weekday == 0 {
+		weekday = 7 // Sunday = 7
+	}
+	daysToMonday := weekday - 1
+	monday := t.AddDate(0, 0, -daysToMonday)
+	return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, monday.Location())
+}
+
+// applyLabelsFilter applies label filtering to a metadata item
+func applyLabelsFilter(metadata MediaMetadata, filterLabels []string) bool {
+	if len(filterLabels) == 0 {
+		return true
+	}
+
+	for _, filterLabel := range filterLabels {
+		for _, itemLabel := range metadata.Labels {
+			if strings.EqualFold(strings.TrimSpace(itemLabel), strings.TrimSpace(filterLabel)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// applyMediaTypesFilter applies media type filtering to a metadata item
+func applyMediaTypesFilter(metadata MediaMetadata, filterTypes []string) bool {
+	if len(filterTypes) == 0 {
+		return true
+	}
+
+	for _, filterType := range filterTypes {
+		if strings.EqualFold(metadata.Type, filterType) {
+			return true
+		}
+	}
+	return false
+}
+
+// LoadFiltersConfig loads the filters configuration from filters.yaml
+func LoadFiltersConfig() (*FiltersConfig, error) {
+	filtersPath := filepath.Join(configDir, "filters.yaml")
+	
+	data, err := os.ReadFile(filtersPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read filters file: %v", err)
+	}
+
+	var config FiltersConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse filters YAML: %v", err)
+	}
+
+	return &config, nil
+}
+
+// GetFilterByID retrieves a specific filter by its ID from the filters configuration
+func GetFilterByID(filterID string) (*Filter, error) {
+	config, err := LoadFiltersConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, filter := range config.Filters {
+		if filter.ID == filterID {
+			return &filter, nil
+		}
+	}
+
+	return nil, fmt.Errorf("filter with ID %s not found", filterID)
+}
+
 func main() {
 	// Load configuration
 	config, err := loadConfig()
@@ -630,76 +837,83 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 	if filename == "" {
 		// Parse query parameters for filtering
 		queryParams := r.URL.Query()
+		filterID := queryParams.Get("filter")
 		startDate := queryParams.Get("startDate")
 		endDate := queryParams.Get("endDate")
 		labelsParam := queryParams.Get("labels")
+		mediaTypesParam := queryParams.Get("mediaTypes")
 
-		var filterLabels []string
-		if labelsParam != "" {
-			filterLabels = strings.Split(labelsParam, ",")
-			// Trim whitespace from each label
-			for i, label := range filterLabels {
-				filterLabels[i] = strings.TrimSpace(label)
-			}
-		}
+		var filterFunc func(MediaMetadata) bool
 
-		// Parse date filters if provided
-		var startTime, endTime time.Time
-		var err error
-		if startDate != "" {
-			startTime, err = time.Parse(time.RFC3339, startDate)
+		// If a filter ID is provided, use the new filter spec
+		if filterID != "" {
+			filter, err := GetFilterByID(filterID)
 			if err != nil {
-				http.Error(w, "Invalid startDate format. Use RFC3339 format (e.g., 2023-01-01T00:00:00Z)", http.StatusBadRequest)
+				http.Error(w, fmt.Sprintf("Filter not found: %v", err), http.StatusNotFound)
 				return
 			}
-		}
-		if endDate != "" {
-			endTime, err = time.Parse(time.RFC3339, endDate)
-			if err != nil {
-				http.Error(w, "Invalid endDate format. Use RFC3339 format (e.g., 2023-12-31T23:59:59Z)", http.StatusBadRequest)
+			
+			if !filter.Enabled {
+				http.Error(w, "Filter is disabled", http.StatusBadRequest)
 				return
 			}
-		}
 
-		// Create a filter function based on query parameters
-		filterFunc := func(metadata MediaMetadata) bool {
-			// Apply date range filtering
+			filterFunc = func(metadata MediaMetadata) bool {
+				return ApplyFilterCriteria(metadata, filter.Criteria)
+			}
+		} else {
+			// Fallback to legacy query parameter filtering for backward compatibility
+			var filterLabels []string
+			if labelsParam != "" {
+				filterLabels = strings.Split(labelsParam, ",")
+				// Trim whitespace from each label
+				for i, label := range filterLabels {
+					filterLabels[i] = strings.TrimSpace(label)
+				}
+			}
+
+			var filterMediaTypes []string
+			if mediaTypesParam != "" {
+				filterMediaTypes = strings.Split(mediaTypesParam, ",")
+				// Trim whitespace from each type
+				for i, mediaType := range filterMediaTypes {
+					filterMediaTypes[i] = strings.TrimSpace(mediaType)
+				}
+			}
+
+			// Validate date format if provided (but we'll use them directly in FilterCriteria)
+			if startDate != "" {
+				if _, err := time.Parse(time.RFC3339, startDate); err != nil {
+					http.Error(w, "Invalid startDate format. Use RFC3339 format (e.g., 2023-01-01T00:00:00Z)", http.StatusBadRequest)
+					return
+				}
+			}
+			if endDate != "" {
+				if _, err := time.Parse(time.RFC3339, endDate); err != nil {
+					http.Error(w, "Invalid endDate format. Use RFC3339 format (e.g., 2023-12-31T23:59:59Z)", http.StatusBadRequest)
+					return
+				}
+			}
+
+			// Create legacy filter criteria
+			var legacyDateRange *FilterDateRange
 			if startDate != "" || endDate != "" {
-				itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
-				if parseErr != nil {
-					log.Printf("Failed to parse timestamp: %v", parseErr)
-					return false
-				}
-
-				// Check if item falls within date range
-				if startDate != "" && itemTime.Before(startTime) {
-					return false
-				}
-				if endDate != "" && itemTime.After(endTime) {
-					return false
+				legacyDateRange = &FilterDateRange{
+					Type:      "fixed",
+					StartDate: startDate,
+					EndDate:   endDate,
 				}
 			}
 
-			// Apply label filtering
-			if len(filterLabels) > 0 {
-				hasMatchingLabel := false
-				for _, filterLabel := range filterLabels {
-					for _, itemLabel := range metadata.Labels {
-						if strings.EqualFold(strings.TrimSpace(itemLabel), filterLabel) {
-							hasMatchingLabel = true
-							break
-						}
-					}
-					if hasMatchingLabel {
-						break
-					}
-				}
-				if !hasMatchingLabel {
-					return false
-				}
+			legacyCriteria := FilterCriteria{
+				DateRange:  legacyDateRange,
+				Labels:     filterLabels,
+				MediaTypes: filterMediaTypes,
 			}
 
-			return true
+			filterFunc = func(metadata MediaMetadata) bool {
+				return ApplyFilterCriteria(metadata, legacyCriteria)
+			}
 		}
 
 		// Use the new scanning function to get all metadata files
@@ -777,76 +991,83 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 
 	// Parse query parameters for filtering
 	queryParams := r.URL.Query()
+	filterID := queryParams.Get("filter")
 	startDate := queryParams.Get("startDate")
 	endDate := queryParams.Get("endDate")
 	labelsParam := queryParams.Get("labels")
+	mediaTypesParam := queryParams.Get("mediaTypes")
 
-	var filterLabels []string
-	if labelsParam != "" {
-		filterLabels = strings.Split(labelsParam, ",")
-		// Trim whitespace from each label
-		for i, label := range filterLabels {
-			filterLabels[i] = strings.TrimSpace(label)
-		}
-	}
+	var filterFunc func(MediaMetadata) bool
 
-	// Parse date filters if provided
-	var startTime, endTime time.Time
-	var err error
-	if startDate != "" {
-		startTime, err = time.Parse(time.RFC3339, startDate)
+	// If a filter ID is provided, use the new filter spec
+	if filterID != "" {
+		filter, err := GetFilterByID(filterID)
 		if err != nil {
-			http.Error(w, "Invalid startDate format. Use RFC3339 format (e.g., 2023-01-01T00:00:00Z)", http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Filter not found: %v", err), http.StatusNotFound)
 			return
 		}
-	}
-	if endDate != "" {
-		endTime, err = time.Parse(time.RFC3339, endDate)
-		if err != nil {
-			http.Error(w, "Invalid endDate format. Use RFC3339 format (e.g., 2023-12-31T23:59:59Z)", http.StatusBadRequest)
+		
+		if !filter.Enabled {
+			http.Error(w, "Filter is disabled", http.StatusBadRequest)
 			return
 		}
-	}
 
-	// Create a filter function based on query parameters
-	filterFunc := func(metadata MediaMetadata) bool {
-		// Apply date range filtering
+		filterFunc = func(metadata MediaMetadata) bool {
+			return ApplyFilterCriteria(metadata, filter.Criteria)
+		}
+	} else {
+		// Fallback to legacy query parameter filtering for backward compatibility
+		var filterLabels []string
+		if labelsParam != "" {
+			filterLabels = strings.Split(labelsParam, ",")
+			// Trim whitespace from each label
+			for i, label := range filterLabels {
+				filterLabels[i] = strings.TrimSpace(label)
+			}
+		}
+
+		var filterMediaTypes []string
+		if mediaTypesParam != "" {
+			filterMediaTypes = strings.Split(mediaTypesParam, ",")
+			// Trim whitespace from each type
+			for i, mediaType := range filterMediaTypes {
+				filterMediaTypes[i] = strings.TrimSpace(mediaType)
+			}
+		}
+
+		// Validate date format if provided (but we'll use them directly in FilterCriteria)
+		if startDate != "" {
+			if _, err := time.Parse(time.RFC3339, startDate); err != nil {
+				http.Error(w, "Invalid startDate format. Use RFC3339 format (e.g., 2023-01-01T00:00:00Z)", http.StatusBadRequest)
+				return
+			}
+		}
+		if endDate != "" {
+			if _, err := time.Parse(time.RFC3339, endDate); err != nil {
+				http.Error(w, "Invalid endDate format. Use RFC3339 format (e.g., 2023-12-31T23:59:59Z)", http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Create legacy filter criteria
+		var legacyDateRange *FilterDateRange
 		if startDate != "" || endDate != "" {
-			itemTime, parseErr := time.Parse(time.RFC3339, metadata.Timestamp)
-			if parseErr != nil {
-				log.Printf("Failed to parse timestamp: %v", parseErr)
-				return false
-			}
-
-			// Check if item falls within date range
-			if startDate != "" && itemTime.Before(startTime) {
-				return false
-			}
-			if endDate != "" && itemTime.After(endTime) {
-				return false
+			legacyDateRange = &FilterDateRange{
+				Type:      "fixed",
+				StartDate: startDate,
+				EndDate:   endDate,
 			}
 		}
 
-		// Apply label filtering
-		if len(filterLabels) > 0 {
-			hasMatchingLabel := false
-			for _, filterLabel := range filterLabels {
-				for _, itemLabel := range metadata.Labels {
-					if strings.EqualFold(strings.TrimSpace(itemLabel), filterLabel) {
-						hasMatchingLabel = true
-						break
-					}
-				}
-				if hasMatchingLabel {
-					break
-				}
-			}
-			if !hasMatchingLabel {
-				return false
-			}
+		legacyCriteria := FilterCriteria{
+			DateRange:  legacyDateRange,
+			Labels:     filterLabels,
+			MediaTypes: filterMediaTypes,
 		}
 
-		return true
+		filterFunc = func(metadata MediaMetadata) bool {
+			return ApplyFilterCriteria(metadata, legacyCriteria)
+		}
 	}
 
 	// Use the new scanning function to get all metadata files
