@@ -14,8 +14,6 @@ metadata:
 
 # Default filter to load in the UI
 defaultFilter: "today"
-# Order of filters in the UI
-displayOrder: ["today", "yesterday", "this_week", "last_7_days", "last_30_days", "personal_photos", "work_content", "notes_only"]
 # Quick filter presets
 filters:
   # Time-based relative filters

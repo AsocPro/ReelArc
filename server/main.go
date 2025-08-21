@@ -119,7 +119,6 @@ type FiltersConfig struct {
 	Version       string          `yaml:"version" json:"version"`
 	Metadata      FiltersMetadata `yaml:"metadata" json:"metadata"`
 	DefaultFilter string          `yaml:"defaultFilter" json:"defaultFilter"`
-	DisplayOrder  []string        `yaml:"displayOrder" json:"displayOrder"`
 	Filters       []Filter        `yaml:"filters" json:"filters"`
 }
 
@@ -1373,17 +1372,6 @@ func handleSaveFilter(w http.ResponseWriter, r *http.Request) {
 	// If filter doesn't exist, add it
 	if !filterExists {
 		config.Filters = append(config.Filters, req.Filter)
-		// Add to display order if not already there
-		found := false
-		for _, id := range config.DisplayOrder {
-			if id == req.Filter.ID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			config.DisplayOrder = append(config.DisplayOrder, req.Filter.ID)
-		}
 	}
 
 	// Update metadata timestamp
@@ -1406,7 +1394,7 @@ func handleSaveFilter(w http.ResponseWriter, r *http.Request) {
 
 // ReorderFiltersRequest represents the request body for reordering filters
 type ReorderFiltersRequest struct {
-	DisplayOrder []string `json:"displayOrder"`
+	FilterIDs []string `json:"filterIds"`
 }
 
 // Handler for PUT /api/filters/reorder
@@ -1423,9 +1411,9 @@ func handleFiltersReorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate that displayOrder is provided
-	if req.DisplayOrder == nil {
-		http.Error(w, "displayOrder is required", http.StatusBadRequest)
+	// Validate that filterIds is provided
+	if req.FilterIDs == nil {
+		http.Error(w, "filterIds is required", http.StatusBadRequest)
 		return
 	}
 
@@ -1436,21 +1424,44 @@ func handleFiltersReorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate that all filter IDs in displayOrder exist
-	filterMap := make(map[string]bool)
+	// Create a map of existing filters for lookup
+	filterMap := make(map[string]Filter)
 	for _, filter := range config.Filters {
-		filterMap[filter.ID] = true
+		filterMap[filter.ID] = filter
 	}
 
-	for _, filterID := range req.DisplayOrder {
-		if !filterMap[filterID] {
+	// Validate that all filter IDs in the request exist
+	for _, filterID := range req.FilterIDs {
+		if _, exists := filterMap[filterID]; !exists {
 			http.Error(w, fmt.Sprintf("Filter ID %s does not exist", filterID), http.StatusBadRequest)
 			return
 		}
 	}
 
-	// Update display order
-	config.DisplayOrder = req.DisplayOrder
+	// Reorder filters based on the provided order
+	newFilters := make([]Filter, 0, len(req.FilterIDs))
+	for _, filterID := range req.FilterIDs {
+		if filter, exists := filterMap[filterID]; exists {
+			newFilters = append(newFilters, filter)
+		}
+	}
+
+	// Add any filters that weren't included in the reorder request (preserve existing ones)
+	for _, filter := range config.Filters {
+		found := false
+		for _, requestedID := range req.FilterIDs {
+			if filter.ID == requestedID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			newFilters = append(newFilters, filter)
+		}
+	}
+
+	// Update the filters array with the new order
+	config.Filters = newFilters
 	config.Metadata.Updated = time.Now().Format(time.RFC3339)
 
 	// Save the updated configuration
@@ -1463,8 +1474,8 @@ func handleFiltersReorder(w http.ResponseWriter, r *http.Request) {
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":       "success",
-		"displayOrder": req.DisplayOrder,
+		"status": "success",
+		"message": "Filters reordered successfully",
 	})
 }
 
@@ -1505,14 +1516,7 @@ func handleFiltersWithID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove from display order
-	newDisplayOrder := make([]string, 0, len(config.DisplayOrder))
-	for _, id := range config.DisplayOrder {
-		if id != filterID {
-			newDisplayOrder = append(newDisplayOrder, id)
-		}
-	}
-	config.DisplayOrder = newDisplayOrder
+	// No need to update display order since we removed it
 
 	// Update metadata timestamp
 	config.Metadata.Updated = time.Now().Format(time.RFC3339)
