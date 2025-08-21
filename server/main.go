@@ -448,6 +448,8 @@ func main() {
 	http.HandleFunc("/api/transcription/status", handleTranscriptionStatus)
 	http.HandleFunc("/api/labels/update", handleUpdateLabels)
 	http.HandleFunc("/api/filters", handleFilters)
+	http.HandleFunc("/api/filters/reorder", handleFiltersReorder)
+	http.HandleFunc("/api/filters/", handleFiltersWithID)
 
 	// Serve media files
 	http.HandleFunc("/media/", handleMediaFiles)
@@ -1288,11 +1290,18 @@ func handleUpdateLabels(w http.ResponseWriter, r *http.Request) {
 
 // Handler for quick filters API
 func handleFilters(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		handleGetFilters(w, r)
+	case http.MethodPost:
+		handleSaveFilter(w, r)
+	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
+}
 
+// Handler for GET /api/filters
+func handleGetFilters(w http.ResponseWriter, r *http.Request) {
 	// Construct the filters.yaml path from config directory
 	filtersPath := filepath.Join(configDir, "filters.yaml")
 	
@@ -1321,4 +1330,222 @@ func handleFilters(w http.ResponseWriter, r *http.Request) {
 	// Return the filters configuration as JSON
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(filtersConfig)
+}
+
+// SaveFilterRequest represents the request body for saving a filter
+type SaveFilterRequest struct {
+	Filter Filter `json:"filter"`
+}
+
+// Handler for POST /api/filters - save a new filter
+func handleSaveFilter(w http.ResponseWriter, r *http.Request) {
+	// Parse request body
+	var req SaveFilterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if req.Filter.ID == "" || req.Filter.Name == "" {
+		http.Error(w, "Filter ID and name are required", http.StatusBadRequest)
+		return
+	}
+
+	// Load current filters config
+	config, err := LoadFiltersConfig()
+	if err != nil {
+		http.Error(w, "Failed to load filters configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if filter already exists (update) or is new (add)
+	filterExists := false
+	for i, existingFilter := range config.Filters {
+		if existingFilter.ID == req.Filter.ID {
+			// Update existing filter
+			config.Filters[i] = req.Filter
+			filterExists = true
+			break
+		}
+	}
+
+	// If filter doesn't exist, add it
+	if !filterExists {
+		config.Filters = append(config.Filters, req.Filter)
+		// Add to display order if not already there
+		found := false
+		for _, id := range config.DisplayOrder {
+			if id == req.Filter.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			config.DisplayOrder = append(config.DisplayOrder, req.Filter.ID)
+		}
+	}
+
+	// Update metadata timestamp
+	config.Metadata.Updated = time.Now().Format(time.RFC3339)
+
+	// Save the updated configuration
+	if err := SaveFiltersConfig(config); err != nil {
+		log.Printf("Error saving filters configuration: %v", err)
+		http.Error(w, "Failed to save filter", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"filter": req.Filter,
+	})
+}
+
+// ReorderFiltersRequest represents the request body for reordering filters
+type ReorderFiltersRequest struct {
+	DisplayOrder []string `json:"displayOrder"`
+}
+
+// Handler for PUT /api/filters/reorder
+func handleFiltersReorder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req ReorderFiltersRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate that displayOrder is provided
+	if req.DisplayOrder == nil {
+		http.Error(w, "displayOrder is required", http.StatusBadRequest)
+		return
+	}
+
+	// Load current filters config
+	config, err := LoadFiltersConfig()
+	if err != nil {
+		http.Error(w, "Failed to load filters configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Validate that all filter IDs in displayOrder exist
+	filterMap := make(map[string]bool)
+	for _, filter := range config.Filters {
+		filterMap[filter.ID] = true
+	}
+
+	for _, filterID := range req.DisplayOrder {
+		if !filterMap[filterID] {
+			http.Error(w, fmt.Sprintf("Filter ID %s does not exist", filterID), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Update display order
+	config.DisplayOrder = req.DisplayOrder
+	config.Metadata.Updated = time.Now().Format(time.RFC3339)
+
+	// Save the updated configuration
+	if err := SaveFiltersConfig(config); err != nil {
+		log.Printf("Error saving filters configuration: %v", err)
+		http.Error(w, "Failed to reorder filters", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":       "success",
+		"displayOrder": req.DisplayOrder,
+	})
+}
+
+// Handler for /api/filters/{id} - handles DELETE requests
+func handleFiltersWithID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract filter ID from URL
+	filterID := strings.TrimPrefix(r.URL.Path, "/api/filters/")
+	if filterID == "" {
+		http.Error(w, "Filter ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Load current filters config
+	config, err := LoadFiltersConfig()
+	if err != nil {
+		http.Error(w, "Failed to load filters configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Find and remove the filter
+	filterFound := false
+	for i, filter := range config.Filters {
+		if filter.ID == filterID {
+			// Remove filter from slice
+			config.Filters = append(config.Filters[:i], config.Filters[i+1:]...)
+			filterFound = true
+			break
+		}
+	}
+
+	if !filterFound {
+		http.Error(w, "Filter not found", http.StatusNotFound)
+		return
+	}
+
+	// Remove from display order
+	newDisplayOrder := make([]string, 0, len(config.DisplayOrder))
+	for _, id := range config.DisplayOrder {
+		if id != filterID {
+			newDisplayOrder = append(newDisplayOrder, id)
+		}
+	}
+	config.DisplayOrder = newDisplayOrder
+
+	// Update metadata timestamp
+	config.Metadata.Updated = time.Now().Format(time.RFC3339)
+
+	// Save the updated configuration
+	if err := SaveFiltersConfig(config); err != nil {
+		log.Printf("Error saving filters configuration: %v", err)
+		http.Error(w, "Failed to delete filter", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "success",
+		"deletedID": filterID,
+	})
+}
+
+// SaveFiltersConfig saves the filters configuration to filters.yaml
+func SaveFiltersConfig(config *FiltersConfig) error {
+	filtersPath := filepath.Join(configDir, "filters.yaml")
+	
+	// Marshal to YAML
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal filters config to YAML: %v", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(filtersPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write filters file: %v", err)
+	}
+
+	return nil
 }

@@ -1,4 +1,4 @@
-import type { MediaItem, TranscriptionStatus, MediaFilters, FiltersConfig } from './types';
+import type { MediaItem, TranscriptionStatus, MediaFilters, FiltersConfig, Filter } from './types';
 
 /**
  * Fetches media items from the API
@@ -142,5 +142,83 @@ export async function fetchFiltersConfig(): Promise<FiltersConfig | null> {
   } catch (error) {
     console.error('Error fetching filters config:', error);
     return null;
+  }
+}
+
+/**
+ * Saves a quick filter to the API
+ * @param filter Filter object to save
+ * @returns Promise with success response
+ */
+export async function saveFilter(filter: Filter): Promise<any> {
+  try {
+    const response = await fetch('/api/filters', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filter
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to save filter: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error saving filter:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reorders the display order of filters
+ * @param displayOrder Array of filter IDs in the desired order
+ * @returns Promise with success response
+ */
+export async function reorderFilters(displayOrder: string[]): Promise<any> {
+  try {
+    const response = await fetch('/api/filters/reorder', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        displayOrder
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to reorder filters: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error reordering filters:', error);
+    throw error;
+  }
+}
+
+/**
+ * Deletes a quick filter by ID
+ * @param filterId Filter ID to delete
+ * @returns Promise with success response
+ */
+export async function deleteFilter(filterId: string): Promise<any> {
+  try {
+    const response = await fetch(`/api/filters/${filterId}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete filter: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error deleting filter:', error);
+    throw error;
   }
 }
