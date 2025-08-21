@@ -5,14 +5,15 @@
   import UploadForm from './components/UploadForm.svelte';
   import TranscriptionStatus from './components/TranscriptionStatus.svelte';
   import MediaDetails from './components/MediaDetails.svelte';
-  import type { MediaItem, MediaFilters, FiltersConfig, Filter } from './lib/types';
+  import FilterManager from './components/FilterManager.svelte';
+  import type { MediaItem, MediaFilters, FiltersConfig } from './lib/types';
   import { fetchMediaItems, fetchFiltersConfig } from './lib/api';
   
   let mediaItems: MediaItem[] = [];
   let selectedItem: MediaItem | null = null;
   let loading = true;
   let error = '';
-  let activeTab = 'upload'; // 'transcription', 'upload', or 'details'
+  let activeTab = 'upload'; // 'transcription', 'upload', 'details', or 'filters'
   let timelineViewerComponent: any;
   
   // Filter state
@@ -229,6 +230,11 @@
   
   function toggleFilters() {
     showFilters = !showFilters;
+  }
+
+  async function handleFiltersReordered() {
+    // Reload filter configuration after reordering
+    await loadFiltersConfig();
   }
 </script>
 
@@ -662,6 +668,13 @@
       >
         Transcription Status
       </button>
+      <button 
+        class="tab-button" 
+        class:active={activeTab === 'filters'} 
+        on:click={() => setActiveTab('filters')}
+      >
+        Filter Manager
+      </button>
     </div>
     
     <div class="content-section">
@@ -680,6 +693,13 @@
       {:else if activeTab === 'transcription'}
         <div class="transcription-section">
           <TranscriptionStatus />
+        </div>
+      {:else if activeTab === 'filters'}
+        <div class="filters-section">
+          <FilterManager 
+            {filtersConfig}
+            on:filters-reordered={handleFiltersReordered}
+          />
         </div>
       {/if}
     </div>
@@ -733,7 +753,8 @@
   
   .upload-section, 
   .details-section, 
-  .transcription-section {
+  .transcription-section,
+  .filters-section {
     height: 100%;
     min-height: 400px;
   }

@@ -175,10 +175,10 @@ export async function saveFilter(filter: Filter): Promise<any> {
 
 /**
  * Reorders the display order of filters
- * @param displayOrder Array of filter IDs in the desired order
+ * @param filterIds Array of filter IDs in the desired order
  * @returns Promise with success response
  */
-export async function reorderFilters(displayOrder: string[]): Promise<any> {
+export async function reorderFilters(filterIds: string[]): Promise<any> {
   try {
     const response = await fetch('/api/filters/reorder', {
       method: 'PUT',
@@ -186,7 +186,7 @@ export async function reorderFilters(displayOrder: string[]): Promise<any> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        displayOrder
+        filterIds
       })
     });
 
