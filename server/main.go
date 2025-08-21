@@ -62,6 +62,53 @@ type TranscriptEntry struct {
 	Metadata string  `yaml:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
+// FilterDateRange represents date range criteria for filters
+type FilterDateRange struct {
+	Type      string `yaml:"type" json:"type"`
+	Period    string `yaml:"period,omitempty" json:"period,omitempty"`
+	Offset    int    `yaml:"offset,omitempty" json:"offset,omitempty"`
+	Anchor    string `yaml:"anchor,omitempty" json:"anchor,omitempty"`
+	StartDate string `yaml:"startDate,omitempty" json:"startDate,omitempty"`
+	EndDate   string `yaml:"endDate,omitempty" json:"endDate,omitempty"`
+	Count     int    `yaml:"count,omitempty" json:"count,omitempty"`
+	Direction string `yaml:"direction,omitempty" json:"direction,omitempty"`
+}
+
+// FilterCriteria represents filter criteria
+type FilterCriteria struct {
+	DateRange  *FilterDateRange `yaml:"dateRange" json:"dateRange"`
+	Labels     []string         `yaml:"labels" json:"labels"`
+	MediaTypes []string         `yaml:"mediaTypes" json:"mediaTypes"`
+}
+
+// Filter represents a single quick filter
+type Filter struct {
+	ID          string         `yaml:"id" json:"id"`
+	Name        string         `yaml:"name" json:"name"`
+	Description string         `yaml:"description" json:"description"`
+	Type        string         `yaml:"type" json:"type"`
+	Icon        string         `yaml:"icon" json:"icon"`
+	Enabled     bool           `yaml:"enabled" json:"enabled"`
+	Criteria    FilterCriteria `yaml:"criteria" json:"criteria"`
+}
+
+// FiltersMetadata represents metadata about the filters configuration
+type FiltersMetadata struct {
+	Name        string `yaml:"name" json:"name"`
+	Description string `yaml:"description" json:"description"`
+	Created     string `yaml:"created" json:"created"`
+	Updated     string `yaml:"updated" json:"updated"`
+}
+
+// FiltersConfig represents the complete filters configuration
+type FiltersConfig struct {
+	Version       string          `yaml:"version" json:"version"`
+	Metadata      FiltersMetadata `yaml:"metadata" json:"metadata"`
+	DefaultFilter string          `yaml:"defaultFilter" json:"defaultFilter"`
+	DisplayOrder  []string        `yaml:"displayOrder" json:"displayOrder"`
+	Filters       []Filter        `yaml:"filters" json:"filters"`
+}
+
 const (
 	clientDir = "./client/dist"
 
@@ -75,6 +122,7 @@ var (
 	metadataDir  string
 	timelineDir  string
 	timelineFile string
+	configDir    string
 )
 
 func main() {
@@ -90,6 +138,17 @@ func main() {
 	metadataDir = config.MetadataDir
 	timelineDir = filepath.Join(config.MetadataDir, "timeline")
 	timelineFile = filepath.Join(config.MetadataDir, "timeline.md")
+	
+	// Set config directory (same logic as in config.go)
+	if envConfigDir := os.Getenv("REELARC_CONFIG"); envConfigDir != "" {
+		configDir = envConfigDir
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatalf("Failed to get user home directory: %v", err)
+		}
+		configDir = filepath.Join(homeDir, ".config", "reelarc")
+	}
 
 	// Ensure data directories exist
 	ensureDirectories()
@@ -104,6 +163,7 @@ func main() {
 	http.HandleFunc("/api/media", handleMedia)
 	http.HandleFunc("/api/transcription/status", handleTranscriptionStatus)
 	http.HandleFunc("/api/labels/update", handleUpdateLabels)
+	http.HandleFunc("/api/filters", handleFilters)
 
 	// Serve media files
 	http.HandleFunc("/media/", handleMediaFiles)
@@ -906,4 +966,41 @@ func handleUpdateLabels(w http.ResponseWriter, r *http.Request) {
 	// Return the updated metadata
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(metadata)
+}
+
+// Handler for quick filters API
+func handleFilters(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Construct the filters.yaml path from config directory
+	filtersPath := filepath.Join(configDir, "filters.yaml")
+	
+	// Check if the filters.yaml file exists
+	if _, err := os.Stat(filtersPath); os.IsNotExist(err) {
+		http.Error(w, "Filters configuration not found", http.StatusNotFound)
+		return
+	}
+
+	// Read the filters.yaml file
+	data, err := os.ReadFile(filtersPath)
+	if err != nil {
+		log.Printf("Error reading filters file %s: %v", filtersPath, err)
+		http.Error(w, "Failed to read filters configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the YAML data
+	var filtersConfig FiltersConfig
+	if err := yaml.Unmarshal(data, &filtersConfig); err != nil {
+		log.Printf("Error parsing filters YAML: %v", err)
+		http.Error(w, "Failed to parse filters configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Return the filters configuration as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(filtersConfig)
 }
