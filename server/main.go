@@ -119,6 +119,7 @@ type FiltersConfig struct {
 	Version       string          `yaml:"version" json:"version"`
 	Metadata      FiltersMetadata `yaml:"metadata" json:"metadata"`
 	DefaultFilter string          `yaml:"defaultFilter" json:"defaultFilter"`
+	PinnedFilters []string        `yaml:"pinnedFilters" json:"pinnedFilters"`
 	Filters       []Filter        `yaml:"filters" json:"filters"`
 }
 
@@ -448,6 +449,8 @@ func main() {
 	http.HandleFunc("/api/labels/update", handleUpdateLabels)
 	http.HandleFunc("/api/filters", handleFilters)
 	http.HandleFunc("/api/filters/reorder", handleFiltersReorder)
+	http.HandleFunc("/api/filters/pin", handlePinFilter)
+	http.HandleFunc("/api/filters/unpin", handleUnpinFilter)
 	http.HandleFunc("/api/filters/", handleFiltersWithID)
 
 	// Serve media files
@@ -1533,6 +1536,163 @@ func handleFiltersWithID(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "success",
 		"deletedID": filterID,
+	})
+}
+
+// PinFilterRequest represents the request body for pinning a filter
+type PinFilterRequest struct {
+	FilterID string `json:"filterId"`
+}
+
+// Handler for POST /api/filters/pin - pin a filter to the collapsed filter bar
+func handlePinFilter(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req PinFilterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if req.FilterID == "" {
+		http.Error(w, "FilterID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Load current filters config
+	config, err := LoadFiltersConfig()
+	if err != nil {
+		http.Error(w, "Failed to load filters configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Verify the filter exists
+	filterExists := false
+	for _, filter := range config.Filters {
+		if filter.ID == req.FilterID {
+			filterExists = true
+			break
+		}
+	}
+
+	if !filterExists {
+		http.Error(w, "Filter not found", http.StatusNotFound)
+		return
+	}
+
+	// Initialize PinnedFilters if nil
+	if config.PinnedFilters == nil {
+		config.PinnedFilters = []string{}
+	}
+
+	// Check if filter is already pinned
+	for _, pinnedID := range config.PinnedFilters {
+		if pinnedID == req.FilterID {
+			// Already pinned, return success without modification
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":  "success",
+				"message": "Filter is already pinned",
+				"pinned":  config.PinnedFilters,
+			})
+			return
+		}
+	}
+
+	// Add filter to pinned list
+	config.PinnedFilters = append(config.PinnedFilters, req.FilterID)
+	config.Metadata.Updated = time.Now().Format(time.RFC3339)
+
+	// Save the updated configuration
+	if err := SaveFiltersConfig(config); err != nil {
+		log.Printf("Error saving filters configuration: %v", err)
+		http.Error(w, "Failed to pin filter", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"pinned": config.PinnedFilters,
+	})
+}
+
+// Handler for POST /api/filters/unpin - unpin a filter from the collapsed filter bar
+func handleUnpinFilter(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req PinFilterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if req.FilterID == "" {
+		http.Error(w, "FilterID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Load current filters config
+	config, err := LoadFiltersConfig()
+	if err != nil {
+		http.Error(w, "Failed to load filters configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Initialize PinnedFilters if nil
+	if config.PinnedFilters == nil {
+		config.PinnedFilters = []string{}
+	}
+
+	// Find and remove filter from pinned list
+	newPinnedFilters := []string{}
+	found := false
+	for _, pinnedID := range config.PinnedFilters {
+		if pinnedID != req.FilterID {
+			newPinnedFilters = append(newPinnedFilters, pinnedID)
+		} else {
+			found = true
+		}
+	}
+
+	if !found {
+		// Filter wasn't pinned, return success without modification
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "success",
+			"message": "Filter was not pinned",
+			"pinned":  config.PinnedFilters,
+		})
+		return
+	}
+
+	// Update pinned filters and metadata
+	config.PinnedFilters = newPinnedFilters
+	config.Metadata.Updated = time.Now().Format(time.RFC3339)
+
+	// Save the updated configuration
+	if err := SaveFiltersConfig(config); err != nil {
+		log.Printf("Error saving filters configuration: %v", err)
+		http.Error(w, "Failed to unpin filter", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"pinned": config.PinnedFilters,
 	})
 }
 

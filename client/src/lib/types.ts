@@ -129,7 +129,7 @@ export interface FiltersConfig {
     updated: string;
   };
   defaultFilter: string;
-  displayOrder: string[];
+  pinnedFilters: string[];
   filters: Filter[];
 }
 

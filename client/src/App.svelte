@@ -427,6 +427,38 @@
             {/if}
           </span>
         {/if}
+        
+        <!-- Pinned filters (shown when collapsed) -->
+        {#if !showFilters && filtersConfig && filtersConfig.pinnedFilters && filtersConfig.pinnedFilters.length > 0}
+          <div class="pinned-filters">
+            {#each filtersConfig.pinnedFilters as pinnedFilterId}
+              {@const pinnedFilter = filtersConfig.filters.find(f => f.id === pinnedFilterId && f.enabled)}
+              {#if pinnedFilter}
+                <button 
+                  class="pinned-filter-btn"
+                  class:active={activeQuickFilter === pinnedFilter.id}
+                  on:click={() => applyQuickFilter(pinnedFilter.id)}
+                  title={pinnedFilter.description}
+                >
+                  <span class="filter-icon">{pinnedFilter.icon}</span>
+                  <span class="filter-name">{pinnedFilter.name}</span>
+                </button>
+              {/if}
+            {/each}
+            
+            <!-- Clear button (shown when a filter is active) -->
+            {#if activeQuickFilter}
+              <button 
+                class="clear-pinned-filter-btn"
+                on:click={clearFilters}
+                title="Clear active filter"
+              >
+                <span class="clear-icon">✕</span>
+                <span class="clear-text">Clear</span>
+              </button>
+            {/if}
+          </div>
+        {/if}
       </div>
       
       {#if showFilters}
@@ -1044,6 +1076,7 @@
     align-items: center;
     gap: 0.5rem;
     border-bottom: 1px solid #eee;
+    flex-wrap: wrap;
   }
   
   .filter-toggle {
@@ -1064,6 +1097,108 @@
   .filter-indicator {
     color: #2196f3;
     font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  /* Pinned Filters Styles */
+  .pinned-filters {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+
+  /* Responsive design for pinned filters */
+  @media (max-width: 768px) {
+    .pinned-filters {
+      margin-left: 0;
+      margin-top: 0.5rem;
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .filter-header {
+      align-items: flex-start;
+    }
+
+    .clear-pinned-filter-btn .clear-text {
+      display: none; /* Hide text on small screens, keep only icon */
+    }
+
+    .clear-pinned-filter-btn {
+      min-width: 32px;
+      padding: 0.5rem;
+      gap: 0;
+    }
+  }
+
+  .pinned-filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.85rem;
+    color: #555;
+    white-space: nowrap;
+  }
+
+  .pinned-filter-btn:hover {
+    border-color: #2196f3;
+    background: #f3f9ff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.1);
+  }
+
+  .pinned-filter-btn.active {
+    border-color: #2196f3;
+    background: #2196f3;
+    color: white;
+  }
+
+  .pinned-filter-btn .filter-icon {
+    font-size: 1rem;
+  }
+
+  .pinned-filter-btn .filter-name {
+    font-weight: 500;
+  }
+
+  /* Clear pinned filter button */
+  .clear-pinned-filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    border: 1.5px solid #dc3545;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.85rem;
+    color: #dc3545;
+    white-space: nowrap;
+    margin-left: 0.25rem;
+  }
+
+  .clear-pinned-filter-btn:hover {
+    background: #dc3545;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);
+  }
+
+  .clear-pinned-filter-btn .clear-icon {
+    font-size: 0.9rem;
+    font-weight: bold;
+  }
+
+  .clear-pinned-filter-btn .clear-text {
     font-weight: 500;
   }
   

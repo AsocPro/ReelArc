@@ -222,3 +222,59 @@ export async function deleteFilter(filterId: string): Promise<any> {
     throw error;
   }
 }
+
+/**
+ * Pins a filter to the collapsed filter bar
+ * @param filterId Filter ID to pin
+ * @returns Promise with success response
+ */
+export async function pinFilter(filterId: string): Promise<any> {
+  try {
+    const response = await fetch('/api/filters/pin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filterId
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to pin filter: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error pinning filter:', error);
+    throw error;
+  }
+}
+
+/**
+ * Unpins a filter from the collapsed filter bar
+ * @param filterId Filter ID to unpin
+ * @returns Promise with success response
+ */
+export async function unpinFilter(filterId: string): Promise<any> {
+  try {
+    const response = await fetch('/api/filters/unpin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filterId
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to unpin filter: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error unpinning filter:', error);
+    throw error;
+  }
+}
