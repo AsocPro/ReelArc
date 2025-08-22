@@ -7,7 +7,7 @@
   import MediaDetails from './components/MediaDetails.svelte';
   import FilterManager from './components/FilterManager.svelte';
   import type { MediaItem, MediaFilters, FiltersConfig } from './lib/types';
-  import { fetchMediaItems, fetchFiltersConfig } from './lib/api';
+  import { fetchMediaItems, fetchFiltersConfig, saveFilter } from './lib/api';
   
   let mediaItems: MediaItem[] = [];
   let selectedItem: MediaItem | null = null;
@@ -235,6 +235,174 @@
   async function handleFiltersReordered() {
     // Reload filter configuration after reordering
     await loadFiltersConfig();
+  }
+
+  // Save current filter as quick filter
+  let showSaveDialog = false;
+  let saveFilterName = '';
+  let saveFilterDescription = '';
+  let saveFilterIcon = '🔍';
+
+  function openSaveDialog() {
+    // Check if there are any active filters to save
+    const hasManualFilters = startDate || endDate || labelFilter.trim() || mediaTypeFilter.length > 0 ||
+                              (dateFilterType === 'relative' && (relativePeriod !== 'days' || relativeCount !== 7 || relativeDirection !== 'backward'));
+    
+    if (!hasManualFilters) {
+      alert('No filters are currently active. Please set up some filters before saving.');
+      return;
+    }
+    
+    showSaveDialog = true;
+    // Generate a default name based on current filters
+    generateDefaultFilterName();
+  }
+
+  function generateDefaultFilterName() {
+    const parts = [];
+    
+    if (dateFilterType === 'fixed') {
+      if (startDate && endDate) {
+        parts.push(`${startDate} to ${endDate}`);
+      } else if (startDate) {
+        parts.push(`From ${startDate}`);
+      } else if (endDate) {
+        parts.push(`Until ${endDate}`);
+      }
+    } else if (dateFilterType === 'relative') {
+      if (relativeRangeType === 'simple') {
+        if (relativePeriod === 'days') {
+          parts.push(`Last ${relativeCount} days`);
+        } else {
+          if (relativeOffset === 0) {
+            parts.push(`Current ${relativePeriod}`);
+          } else if (relativeOffset < 0) {
+            parts.push(`${Math.abs(relativeOffset)} ${relativePeriod}(s) ago`);
+          } else {
+            parts.push(`${relativeOffset} ${relativePeriod}(s) from now`);
+          }
+        }
+      } else {
+        parts.push('Custom date range');
+      }
+    }
+    
+    if (labelFilter.trim()) {
+      const labels = labelFilter.split(',').map(l => l.trim()).filter(l => l);
+      if (labels.length === 1) {
+        parts.push(`"${labels[0]}"`);
+      } else if (labels.length > 1) {
+        parts.push(`${labels.length} labels`);
+      }
+    }
+    
+    if (mediaTypeFilter.length > 0) {
+      if (mediaTypeFilter.length === 1) {
+        parts.push(`${mediaTypeFilter[0]} only`);
+      } else {
+        parts.push(`${mediaTypeFilter.length} media types`);
+      }
+    }
+    
+    saveFilterName = parts.length > 0 ? parts.join(' + ') : 'Custom Filter';
+    saveFilterDescription = `Custom filter saved on ${new Date().toLocaleDateString()}`;
+  }
+
+  function closeSaveDialog() {
+    showSaveDialog = false;
+    saveFilterName = '';
+    saveFilterDescription = '';
+    saveFilterIcon = '🔍';
+  }
+
+  async function saveCurrentFilter() {
+    if (!saveFilterName.trim()) {
+      alert('Please enter a filter name.');
+      return;
+    }
+
+    try {
+      // Generate unique ID based on name and timestamp
+      const filterId = saveFilterName.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_' + Date.now();
+      
+      // Build filter criteria from current state
+      const criteria: any = {
+        labels: labelFilter.trim() ? labelFilter.split(',').map(l => l.trim()).filter(l => l) : [],
+        mediaTypes: mediaTypeFilter || []
+      };
+
+      // Handle date range
+      if (dateFilterType === 'fixed') {
+        if (startDate || endDate) {
+          criteria.dateRange = {
+            type: 'fixed',
+            ...(startDate && { startDate: new Date(startDate).toISOString() }),
+            ...(endDate && { endDate: new Date(endDate).toISOString() })
+          };
+        }
+      } else if (dateFilterType === 'relative') {
+        const dateRange: any = {
+          type: 'relative'
+        };
+        
+        if (relativeRangeType === 'simple') {
+          // Simple relative date
+          dateRange.period = relativePeriod;
+          dateRange.anchor = 'start';
+          
+          if (relativePeriod === 'days') {
+            dateRange.count = relativeCount;
+            dateRange.direction = relativeDirection;
+          } else {
+            dateRange.offset = relativeOffset;
+          }
+        } else if (relativeRangeType === 'range') {
+          // Complex relative date range
+          dateRange.startRelative = {
+            period: startRelativePeriod,
+            anchor: 'start',
+            ...(startRelativePeriod === 'days' 
+              ? { count: startRelativeCount, direction: startRelativeDirection }
+              : { offset: startRelativeOffset })
+          };
+          
+          dateRange.endRelative = {
+            period: endRelativePeriod,
+            anchor: 'start',
+            ...(endRelativePeriod === 'days' 
+              ? { count: endRelativeCount, direction: endRelativeDirection }
+              : { offset: endRelativeOffset })
+          };
+        }
+        
+        criteria.dateRange = dateRange;
+      }
+
+      const filter = {
+        id: filterId,
+        name: saveFilterName,
+        description: saveFilterDescription,
+        type: 'custom',
+        icon: saveFilterIcon,
+        enabled: true,
+        criteria
+      };
+
+      await saveFilter(filter);
+      
+      // Reload filter configuration to show the new filter
+      await loadFiltersConfig();
+      
+      // Close the dialog
+      closeSaveDialog();
+      
+      // Show success message
+      alert(`Filter "${saveFilterName}" saved successfully!`);
+      
+    } catch (error) {
+      console.error('Failed to save filter:', error);
+      alert('Failed to save filter. Please try again.');
+    }
   }
 </script>
 
@@ -626,6 +794,7 @@
             
             <div class="filter-actions">
               <button class="apply-btn" on:click={applyFilters}>Apply Manual Filters</button>
+              <button class="save-btn" on:click={openSaveDialog}>Save as Quick Filter</button>
               <button class="clear-btn" on:click={clearFilters}>Clear All</button>
             </div>
           </div>
@@ -705,6 +874,59 @@
     </div>
   </div>
   
+  <!-- Save Filter Dialog -->
+  {#if showSaveDialog}
+    <div class="modal-overlay" on:click={closeSaveDialog}>
+      <div class="save-dialog" on:click|stopPropagation>
+        <div class="dialog-header">
+          <h3>Save Current Filter as Quick Filter</h3>
+          <button class="close-btn" on:click={closeSaveDialog}>×</button>
+        </div>
+        
+        <div class="dialog-content">
+          <div class="form-group">
+            <label for="filter-name">Filter Name:</label>
+            <input 
+              id="filter-name"
+              type="text" 
+              bind:value={saveFilterName}
+              placeholder="Enter filter name"
+              class="dialog-input"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label for="filter-description">Description:</label>
+            <textarea 
+              id="filter-description"
+              bind:value={saveFilterDescription}
+              placeholder="Enter filter description"
+              class="dialog-textarea"
+              rows="3"
+            ></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label for="filter-icon">Icon:</label>
+            <input 
+              id="filter-icon"
+              type="text" 
+              bind:value={saveFilterIcon}
+              placeholder="🔍"
+              class="dialog-input icon-input"
+              maxlength="2"
+            />
+            <span class="icon-hint">Choose an emoji icon for your filter</span>
+          </div>
+        </div>
+        
+        <div class="dialog-actions">
+          <button class="dialog-btn cancel-btn" on:click={closeSaveDialog}>Cancel</button>
+          <button class="dialog-btn save-btn" on:click={saveCurrentFilter}>Save Filter</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
 </main>
 
@@ -930,7 +1152,7 @@
     border-top: 1px solid #eee;
   }
   
-  .apply-btn, .clear-btn {
+  .apply-btn, .save-btn, .clear-btn {
     padding: 0.5rem 1rem;
     border: none;
     border-radius: 4px;
@@ -946,6 +1168,15 @@
   
   .apply-btn:hover {
     background: #1976d2;
+  }
+
+  .save-btn {
+    background: #4caf50;
+    color: white;
+  }
+
+  .save-btn:hover {
+    background: #45a049;
   }
   
   .clear-btn {
@@ -1137,5 +1368,197 @@
     color: #2c3e50;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid #ecf0f1;
+  }
+
+  /* Save Filter Dialog Styles */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .save-dialog {
+    background: white;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    animation: slideUp 0.2s ease;
+  }
+
+  @keyframes slideUp {
+    from { 
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to { 
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem;
+    border-bottom: 1px solid #e1e5e9;
+  }
+
+  .dialog-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #2c3e50;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #6c757d;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .close-btn:hover {
+    background: #f8f9fa;
+    color: #2c3e50;
+  }
+
+  .dialog-content {
+    padding: 1.5rem;
+  }
+
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+
+  .form-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .form-group label {
+    display: block;
+    font-weight: 500;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  .dialog-input,
+  .dialog-textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-family: inherit;
+    transition: border-color 0.2s ease;
+  }
+
+  .dialog-input:focus,
+  .dialog-textarea:focus {
+    outline: none;
+    border-color: #2196f3;
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+  }
+
+  .icon-input {
+    width: 80px;
+    text-align: center;
+    font-size: 1.2rem;
+  }
+
+  .icon-hint {
+    display: block;
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+  }
+
+  .dialog-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    border-top: 1px solid #e1e5e9;
+    background: #f8f9fa;
+  }
+
+  .dialog-btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    min-width: 100px;
+  }
+
+  .cancel-btn {
+    background: #f5f5f5;
+    color: #666;
+    border: 1px solid #ddd;
+  }
+
+  .cancel-btn:hover {
+    background: #eeeeee;
+    color: #555;
+  }
+
+  .dialog-btn.save-btn {
+    background: #4caf50;
+    color: white;
+  }
+
+  .dialog-btn.save-btn:hover {
+    background: #45a049;
+  }
+
+  /* Responsive dialog */
+  @media (max-width: 768px) {
+    .save-dialog {
+      width: 95%;
+      margin: 1rem;
+    }
+
+    .dialog-header,
+    .dialog-content,
+    .dialog-actions {
+      padding: 1rem;
+    }
+
+    .dialog-actions {
+      flex-direction: column-reverse;
+      gap: 0.5rem;
+    }
+
+    .dialog-btn {
+      width: 100%;
+    }
   }
 </style>
