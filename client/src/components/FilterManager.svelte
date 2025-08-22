@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { FiltersConfig, Filter } from '../lib/types';
-  import { reorderFilters } from '../lib/api';
+  import { reorderFilters, deleteFilter } from '../lib/api';
 
   export let filtersConfig: FiltersConfig | null = null;
 
@@ -123,6 +123,19 @@
       }
     }
   }
+
+  async function handleDeleteFilter(filter: Filter) {
+    const confirmation = confirm(`Are you sure you want to delete the filter "${filter.name}"? This action cannot be undone.`);
+    if (!confirmation) return;
+
+    try {
+      await deleteFilter(filter.id);
+      dispatch('filters-reordered');
+    } catch (error) {
+      console.error('Failed to delete filter:', error);
+      alert('Failed to delete filter. Please try again.');
+    }
+  }
 </script>
 
 <div class="filter-manager">
@@ -170,6 +183,15 @@
             <span class="status-badge" class:enabled={filter.enabled}>
               {filter.enabled ? 'Enabled' : 'Disabled'}
             </span>
+            <button 
+              class="delete-button"
+              title="Delete filter"
+              on:click|stopPropagation={() => handleDeleteFilter(filter)}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5Zm-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5ZM4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06Zm6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528ZM8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5Z"/>
+              </svg>
+            </button>
           </div>
         </div>
       {/each}
@@ -318,6 +340,7 @@
   .filter-status {
     display: flex;
     align-items: center;
+    gap: 0.5rem;
   }
 
   .status-badge {
@@ -331,6 +354,36 @@
 
   .status-badge.enabled {
     background: #28a745;
+  }
+
+  .delete-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    background: transparent;
+    border: 1px solid #dc3545;
+    border-radius: 4px;
+    color: #dc3545;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 32px;
+    height: 32px;
+  }
+
+  .delete-button:hover {
+    background: #dc3545;
+    color: white;
+    transform: scale(1.05);
+  }
+
+  .delete-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
+  }
+
+  .delete-button:active {
+    transform: scale(0.95);
   }
 
   .empty-state {
@@ -362,6 +415,12 @@
 
     .filter-status {
       justify-content: flex-end;
+    }
+
+    .delete-button {
+      min-width: 28px;
+      height: 28px;
+      padding: 0.375rem;
     }
   }
 </style>
