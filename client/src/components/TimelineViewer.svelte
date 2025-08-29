@@ -12,6 +12,7 @@
 
   const dispatch = createEventDispatcher<{
     'item-select': MediaItem;
+    'item-update': MediaItem;
     'center-playhead': void;
   }>();
 
@@ -30,6 +31,10 @@
 
   function handleItemSelect(event: CustomEvent<MediaItem>) {
     dispatch('item-select', event.detail);
+  }
+
+  function handleItemUpdate(event: CustomEvent<MediaItem>) {
+    dispatch('item-update', event.detail);
   }
 
   function handleCenterPlayhead() {
@@ -68,13 +73,14 @@
           {error}
           on:item-select={handleItemSelect}
         />
-      {:else if activeTab === 'kanban'}
-        <KanbanView
-          {data}
-          {loading}
-          {error}
-          on:item-select={handleItemSelect}
-        />
+       {:else if activeTab === 'kanban'}
+         <KanbanView
+           {data}
+           {loading}
+           {error}
+           on:item-select={handleItemSelect}
+           on:item-update={handleItemUpdate}
+         />
       {/if}
     </div>
   </TabContainer>

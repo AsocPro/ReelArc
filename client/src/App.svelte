@@ -836,14 +836,15 @@
 
     <!-- Timeline viewer with tabbed interface always visible at the top -->
     <div class="timeline-container">
-      <TimelineViewer 
-        data={mediaItems} 
-        {loading}
-        {error}
-        on:item-select={handleItemSelect}
-        on:center-playhead
-        bind:this={timelineViewerComponent}
-      />
+       <TimelineViewer
+         data={mediaItems}
+         {loading}
+         {error}
+         on:item-select={handleItemSelect}
+         on:item-update={handleItemUpdate}
+         on:center-playhead
+         bind:this={timelineViewerComponent}
+       />
     </div>
 
     <div class="tabs">

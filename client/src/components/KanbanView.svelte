@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { MediaItem } from '../lib/types';
-  import { updateMediaType } from '../lib/api';
+  import { updateLabels } from '../lib/api';
 
   export let data: MediaItem[] = [];
   export let loading = false;
@@ -20,12 +20,12 @@
   let draggedItem: MediaItem | null = null;
   let draggedOverColumn: string | null = null;
 
-  function handleDragStart(event: DragEvent, item: MediaItem, sourceType: string) {
+  function handleDragStart(event: DragEvent, item: MediaItem, sourceLabel: string) {
     draggedItem = item;
     event.dataTransfer!.effectAllowed = 'move';
     event.dataTransfer!.setData('text/plain', JSON.stringify({
       itemId: item.id,
-      sourceType: sourceType
+      sourceLabel: sourceLabel
     }));
 
     // Add dragging class to the card
@@ -33,7 +33,7 @@
     target.classList.add('dragging');
   }
 
-  function handleDragEnd(event: DragEvent) {
+  function handleDragEnd(_event: DragEvent) {
     draggedItem = null;
     draggedOverColumn = null;
 
@@ -42,11 +42,11 @@
     cards.forEach(card => card.classList.remove('dragging'));
   }
 
-  function handleDragOver(event: DragEvent, targetType: string) {
+  function handleDragOver(event: DragEvent, targetLabel: string) {
     event.preventDefault();
     event.dataTransfer!.dropEffect = 'move';
 
-    draggedOverColumn = targetType;
+    draggedOverColumn = targetLabel;
 
     // Add drag-over class to the column
     const target = event.currentTarget as HTMLElement;
@@ -59,7 +59,7 @@
     target.classList.remove('drag-over');
   }
 
-  async function handleDrop(event: DragEvent, targetType: string) {
+  async function handleDrop(event: DragEvent, targetLabel: string) {
     event.preventDefault();
 
     if (!draggedItem) return;
@@ -70,18 +70,53 @@
 
     // Parse drag data
     const dragData = JSON.parse(event.dataTransfer!.getData('text/plain'));
-    const sourceType = dragData.sourceType;
+    const sourceLabel = dragData.sourceLabel;
 
     // Only proceed if dropping in a different column
-    if (sourceType !== targetType) {
+    if (sourceLabel !== targetLabel) {
       try {
-        // Update the item's type via API
-        const updatedItem = await updateMediaType(draggedItem.id, targetType as MediaItem['type']);
-        if (updatedItem) {
-          dispatch('item-update', updatedItem);
+        // Calculate new labels array
+        let newLabels: string[] = [];
+
+        if (targetLabel === 'Unlabeled') {
+          // Remove all labels for Unlabeled lane
+          newLabels = [];
+        } else {
+          // Remove source label and add target label
+          newLabels = [...draggedItem.labels];
+
+          // Remove source label if it exists
+          if (sourceLabel !== 'Unlabeled') {
+            const sourceIndex = newLabels.indexOf(sourceLabel);
+            if (sourceIndex > -1) {
+              newLabels.splice(sourceIndex, 1);
+            }
+          }
+
+          // Add target label if not already present
+          if (!newLabels.includes(targetLabel)) {
+            newLabels.push(targetLabel);
+          }
         }
-      } catch (error) {
-        console.error('Failed to update media type:', error);
+
+        // Update the item's labels via API
+        const updatedItem = await updateLabels(draggedItem.id, newLabels);
+        if (updatedItem) {
+          // Update local data state immediately
+          data = data.map(item =>
+            item.id === updatedItem.id ? updatedItem : item
+          );
+
+          dispatch('item-update', updatedItem);
+        } else {
+          // Handle API error
+          error = 'Failed to update item labels. Please try again.';
+          console.error('Failed to update labels: API returned null');
+        }
+      } catch (apiError) {
+        // Handle API error gracefully
+        error = 'Failed to update item labels. Please check your connection and try again.';
+        console.error('Failed to update labels:', apiError);
       }
     }
 
@@ -100,47 +135,62 @@
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  function getTypeIcon(type: string): string {
-    switch (type) {
-      case 'photo': return '📷';
-      case 'audio': return '🎵';
-      case 'video': return '🎬';
-      case 'note': return '📝';
-      default: return '📄';
-    }
-  }
 
-  // Group items by type for Kanban columns
+
+  // Group items by labels for Kanban columns
   $: groupedItems = data.reduce((groups, item) => {
-    const type = item.type;
-    if (!groups[type]) {
-      groups[type] = [];
+    // Determine the primary label for this item
+    const primaryLabel: string = (item.labels && item.labels.length > 0 && item.labels[0]) ? item.labels[0] : 'Unlabeled';
+
+    if (!groups[primaryLabel]) {
+      groups[primaryLabel] = [];
     }
-    groups[type].push(item);
+    groups[primaryLabel].push(item);
     return groups;
   }, {} as Record<string, MediaItem[]>);
 
-  // Define column order
-  const columnOrder = ['photo', 'audio', 'video', 'note'];
+  // Get all unique labels from data, including 'Unlabeled'
+  $: availableLabels = Array.from(
+    new Set(
+      data.flatMap(item => item.labels.length > 0 ? item.labels : ['Unlabeled'])
+    )
+  ).sort();
 
-  function getColumnTitle(type: string): string {
-    switch (type) {
-      case 'photo': return 'Photos';
-      case 'audio': return 'Audio';
-      case 'video': return 'Videos';
-      case 'note': return 'Notes';
-      default: return type.charAt(0).toUpperCase() + type.slice(1);
+  // Define column order (Unlabeled first, then alphabetical)
+  $: columnOrder = ['Unlabeled', ...availableLabels.filter(label => label !== 'Unlabeled')];
+
+  function getColumnTitle(label: string): string {
+    if (label === 'Unlabeled') {
+      return 'Unlabeled';
     }
+    return label;
   }
 
-  function getColumnColor(type: string): string {
-    switch (type) {
-      case 'photo': return '#e8f5e8';
-      case 'audio': return '#e3f2fd';
-      case 'video': return '#fff3e0';
-      case 'note': return '#f3e5f5';
-      default: return '#f5f5f5';
+  function getColumnColor(label: string): string {
+    if (label === 'Unlabeled') {
+      return '#f5f5f5'; // Light gray for unlabeled
     }
+
+    // Generate consistent colors based on label hash
+    const hash = label.split('').reduce((a: number, b: string) => {
+      const charCode = b.charCodeAt(0);
+      a = ((a << 5) - a) + (isNaN(charCode) ? 0 : charCode);
+      return a & a;
+    }, 0);
+
+    const colors = [
+      '#e8f5e8', // Light green
+      '#e3f2fd', // Light blue
+      '#fff3e0', // Light orange
+      '#f3e5f5', // Light purple
+      '#e8f4fd', // Light cyan
+      '#f1f8e9', // Light lime
+      '#fce4ec', // Light pink
+      '#f3e5f5', // Light purple (duplicate for variety)
+    ];
+
+    const colorIndex = Math.abs(hash) % colors.length;
+    return colors[colorIndex] || '#f5f5f5';
   }
 </script>
 
@@ -153,23 +203,27 @@
     <div class="empty">No media items found</div>
   {:else}
     <div class="kanban-board">
-      {#each columnOrder as type}
-        {@const items = groupedItems[type] || []}
-        <div class="kanban-column" style="background-color: {getColumnColor(type)}">
+      {#each columnOrder as label}
+        {@const items = groupedItems[label] || []}
+        <div class="kanban-column" style="background-color: {getColumnColor(label)}">
           <div class="column-header">
             <h3 class="column-title">
-              <span class="type-icon">{getTypeIcon(type)}</span>
-              {getColumnTitle(type)}
+              {#if label === 'Unlabeled'}
+                <span class="type-icon">🏷️</span>
+              {:else}
+                <span class="type-icon">🏷️</span>
+              {/if}
+              {getColumnTitle(label)}
             </h3>
             <span class="item-count">{items.length}</span>
           </div>
            <div
-             class="column-content"
-             class:drag-over={draggedOverColumn === type}
-             on:dragover={(e) => handleDragOver(e, type)}
-             on:dragleave={handleDragLeave}
-             on:drop={(e) => handleDrop(e, type)}
-           >
+            class="column-content"
+            class:drag-over={draggedOverColumn === label}
+            on:dragover={(e) => handleDragOver(e, label)}
+            on:dragleave={handleDragLeave}
+            on:drop={(e) => handleDrop(e, label)}
+          >
              {#each items as item}
                <div
                  class="kanban-card"
@@ -177,7 +231,7 @@
                  class:dragging={draggedItem?.id === item.id}
                  draggable="true"
                  on:click={() => handleItemClick(item)}
-                 on:dragstart={(e) => handleDragStart(e, item, type)}
+                  on:dragstart={(e) => handleDragStart(e, item, label)}
                  on:dragend={handleDragEnd}
                >
                 <div class="card-header">
