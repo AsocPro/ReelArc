@@ -3,6 +3,7 @@
   import TabContainer from './TabContainer.svelte';
   import Timeline from './Timeline.svelte';
   import TableView from './TableView.svelte';
+  import KanbanView from './KanbanView.svelte';
   import type { MediaItem, TabConfig } from '../lib/types';
 
   export let data: MediaItem[] = [];
@@ -19,7 +20,8 @@
 
   const tabs: TabConfig[] = [
     { id: 'timeline', label: 'Timeline View' },
-    { id: 'table', label: 'Table View' }
+    { id: 'table', label: 'Table View' },
+    { id: 'kanban', label: 'Kanban View' }
   ];
 
   function handleTabChange(event: CustomEvent<string>) {
@@ -51,18 +53,25 @@
   <TabContainer {tabs} {activeTab} on:tab-change={handleTabChange}>
     <div slot="default" let:activeTab class="view-container">
       {#if activeTab === 'timeline'}
-        <Timeline 
-          {data} 
-          {loading} 
+        <Timeline
+          {data}
+          {loading}
           {error}
           on:item-select={handleItemSelect}
           on:center-playhead={handleCenterPlayhead}
           bind:this={timelineComponent}
         />
       {:else if activeTab === 'table'}
-        <TableView 
-          {data} 
-          {loading} 
+        <TableView
+          {data}
+          {loading}
+          {error}
+          on:item-select={handleItemSelect}
+        />
+      {:else if activeTab === 'kanban'}
+        <KanbanView
+          {data}
+          {loading}
           {error}
           on:item-select={handleItemSelect}
         />

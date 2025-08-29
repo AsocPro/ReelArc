@@ -847,31 +847,31 @@
     </div>
 
     <div class="tabs">
-      <button 
-        class="tab-button" 
-        class:active={activeTab === 'upload'} 
+      <button
+        class="tab-button"
+        class:active={activeTab === 'upload'}
         on:click={() => setActiveTab('upload')}
       >
         Upload Media
       </button>
-      <button 
-        class="tab-button" 
-        class:active={activeTab === 'details'} 
+      <button
+        class="tab-button"
+        class:active={activeTab === 'details'}
         on:click={() => setActiveTab('details')}
         disabled={!selectedItem}
       >
         Media Details
       </button>
-      <button 
-        class="tab-button" 
-        class:active={activeTab === 'transcription'} 
+      <button
+        class="tab-button"
+        class:active={activeTab === 'transcription'}
         on:click={() => setActiveTab('transcription')}
       >
         Transcription Status
       </button>
-      <button 
-        class="tab-button" 
-        class:active={activeTab === 'filters'} 
+      <button
+        class="tab-button"
+        class:active={activeTab === 'filters'}
         on:click={() => setActiveTab('filters')}
       >
         Filter Manager
@@ -885,8 +885,8 @@
         </div>
       {:else if activeTab === 'details'}
         <div class="details-section">
-          <MediaDetails 
-            item={selectedItem} 
+          <MediaDetails
+            item={selectedItem}
             on:update={handleItemUpdate}
             on:center-playhead={handleCenterPlayhead}
           />
@@ -897,7 +897,7 @@
         </div>
       {:else if activeTab === 'filters'}
         <div class="filters-section">
-          <FilterManager 
+          <FilterManager
             {filtersConfig}
             on:filters-reordered={handleFiltersReordered}
           />
@@ -1005,8 +1005,8 @@
     min-height: 400px;
   }
   
-  .upload-section, 
-  .details-section, 
+  .upload-section,
+  .details-section,
   .transcription-section,
   .filters-section {
     height: 100%;
