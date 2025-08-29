@@ -4,11 +4,12 @@
   import Timeline from './Timeline.svelte';
   import TableView from './TableView.svelte';
   import KanbanView from './KanbanView.svelte';
-  import type { MediaItem, TabConfig } from '../lib/types';
+  import type { MediaItem, TabConfig, SwimlanesConfig } from '../lib/types';
 
   export let data: MediaItem[] = [];
   export let loading = false;
   export let error = '';
+  export let swimlanesConfig: SwimlanesConfig | null = null;
 
   const dispatch = createEventDispatcher<{
     'item-select': MediaItem;
@@ -73,14 +74,15 @@
           {error}
           on:item-select={handleItemSelect}
         />
-       {:else if activeTab === 'kanban'}
-         <KanbanView
-           {data}
-           {loading}
-           {error}
-           on:item-select={handleItemSelect}
-           on:item-update={handleItemUpdate}
-         />
+        {:else if activeTab === 'kanban'}
+          <KanbanView
+            {data}
+            {loading}
+            {error}
+            {swimlanesConfig}
+            on:item-select={handleItemSelect}
+            on:item-update={handleItemUpdate}
+          />
       {/if}
     </div>
   </TabContainer>

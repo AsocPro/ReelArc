@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import type { SwimlanesConfig } from './types';
 
 // Store for tracking current media playback
 export interface MediaPlaybackState {
@@ -15,3 +16,6 @@ export const mediaPlayback = writable<MediaPlaybackState>({
   startTimestamp: null,
   currentTime: 0
 });
+
+// Store for swimlanes configuration
+export const swimlanesConfig = writable<SwimlanesConfig | null>(null);

@@ -123,6 +123,32 @@ type FiltersConfig struct {
 	Filters       []Filter        `yaml:"filters" json:"filters"`
 }
 
+// Swimlane represents a single swimlane
+type Swimlane struct {
+	ID          string `yaml:"id" json:"id"`
+	Name        string `yaml:"name" json:"name"`
+	Description string `yaml:"description" json:"description"`
+	Icon        string `yaml:"icon" json:"icon"`
+	Enabled     bool   `yaml:"enabled" json:"enabled"`
+	Color       string `yaml:"color,omitempty" json:"color,omitempty"`
+	Order       int    `yaml:"order" json:"order"`
+}
+
+// SwimlanesMetadata represents metadata about the swimlanes configuration
+type SwimlanesMetadata struct {
+	Name        string `yaml:"name" json:"name"`
+	Description string `yaml:"description" json:"description"`
+	Created     string `yaml:"created" json:"created"`
+	Updated     string `yaml:"updated" json:"updated"`
+}
+
+// SwimlanesConfig represents the complete swimlanes configuration
+type SwimlanesConfig struct {
+	Version   string            `yaml:"version" json:"version"`
+	Metadata  SwimlanesMetadata `yaml:"metadata" json:"metadata"`
+	Swimlanes []Swimlane        `yaml:"swimlanes" json:"swimlanes"`
+}
+
 const (
 	clientDir = "./client/dist"
 
@@ -409,264 +435,7 @@ func GetFilterByID(filterID string) (*Filter, error) {
 	return nil, fmt.Errorf("filter with ID %s not found", filterID)
 }
 
-func main() {
-	// Load configuration
-	config, err := loadConfig()
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
-	AppConfig = config
-
-	// Set global directory variables from config
-	mediaDir = config.MediaDir
-	metadataDir = config.MetadataDir
-	timelineDir = filepath.Join(config.MetadataDir, "timeline")
-	timelineFile = filepath.Join(config.MetadataDir, "timeline.md")
-
-	// Set config directory (same logic as in config.go)
-	if envConfigDir := os.Getenv("REELARC_CONFIG"); envConfigDir != "" {
-		configDir = envConfigDir
-	} else {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatalf("Failed to get user home directory: %v", err)
-		}
-		configDir = filepath.Join(homeDir, ".config", "reelarc")
-	}
-
-	// Ensure data directories exist
-	ensureDirectories()
-
-	// Initialize transcription system
-	InitTranscriptionSystem()
-
-	// API routes
-	http.HandleFunc("/api/timeline", handleTimeline)
-	http.HandleFunc("/api/upload", handleUpload)
-	http.HandleFunc("/api/metadata/", handleMetadata)
-	http.HandleFunc("/api/media", handleMedia)
-	http.HandleFunc("/api/media/update-type", handleUpdateMediaType)
-	http.HandleFunc("/api/transcription/status", handleTranscriptionStatus)
-	http.HandleFunc("/api/labels/update", handleUpdateLabels)
-	http.HandleFunc("/api/filters", handleFilters)
-	http.HandleFunc("/api/filters/reorder", handleFiltersReorder)
-	http.HandleFunc("/api/filters/pin", handlePinFilter)
-	http.HandleFunc("/api/filters/unpin", handleUnpinFilter)
-	http.HandleFunc("/api/filters/", handleFiltersWithID)
-
-	// Serve media files
-	http.HandleFunc("/media/", handleMediaFiles)
-
-	// Serve static files in production
-	http.HandleFunc("/", handleStaticFiles)
-
-	// Start server
-	port := 8080
-	fmt.Printf("Server starting on http://localhost:%d\n", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
-}
-
-func ensureDirectories() {
-	dirs := []string{mediaDir, metadataDir, timelineDir, AppConfig.TranscriptionDir}
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			log.Fatalf("Failed to create directory %s: %v", dir, err)
-		}
-	}
-}
-
-// Helper function to read a Markdown file with frontmatter
-func readMarkdownFile(filePath string, data interface{}) (string, error) {
-	// Read the file
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read file: %v", err)
-	}
-
-	// Parse frontmatter
-	body, err := frontmatter.Parse(bytes.NewReader(content), data)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse frontmatter: %v", err)
-	}
-
-	return string(body), nil
-}
-
-// scanMarkdownFiles scans both metadata directory and external markdown directories for markdown files
-func scanMarkdownFiles(filterFunc func(MediaMetadata) bool) ([]MediaMetadata, error) {
-	allMetadata := make([]MediaMetadata, 0)
-
-	// Scan the main metadata directory
-	files, err := os.ReadDir(metadataDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read metadata directory: %v", err)
-	}
-
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
-			filePath := filepath.Join(metadataDir, file.Name())
-			metadata, err := readMetadataFromFile(filePath)
-			if err != nil {
-				log.Printf("Failed to read metadata file %s: %v", file.Name(), err)
-				continue
-			}
-
-			if filterFunc == nil || filterFunc(metadata) {
-				allMetadata = append(allMetadata, metadata)
-			}
-		}
-	}
-
-	// Scan external markdown directories
-	for _, externalDir := range AppConfig.ExternalMarkdownDirs {
-		// Check if directory exists
-		if _, err := os.Stat(externalDir); os.IsNotExist(err) {
-			log.Printf("External markdown directory does not exist: %s", externalDir)
-			continue
-		}
-
-		files, err := os.ReadDir(externalDir)
-		if err != nil {
-			log.Printf("Failed to read external markdown directory %s: %v", externalDir, err)
-			continue
-		}
-
-		for _, file := range files {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
-				filePath := filepath.Join(externalDir, file.Name())
-				metadata, err := readMetadataFromFile(filePath)
-				if err != nil {
-					log.Printf("Failed to read external markdown file %s: %v", file.Name(), err)
-					continue
-				}
-
-				if filterFunc == nil || filterFunc(metadata) {
-					allMetadata = append(allMetadata, metadata)
-				}
-			}
-		}
-	}
-
-	return allMetadata, nil
-}
-
-// readMetadataFromFile reads metadata from a markdown file
-func readMetadataFromFile(filePath string) (MediaMetadata, error) {
-	var metadata MediaMetadata
-
-	// Read Markdown file with frontmatter
-	content, readErr := readMarkdownFile(filePath, &metadata)
-	if readErr != nil {
-		return metadata, readErr
-	}
-	metadata.Transcription = content
-	metadata.Notes = content // Set notes field to same content
-
-	// Ensure Labels is never nil
-	if metadata.Labels == nil {
-		metadata.Labels = []string{}
-	}
-
-	return metadata, nil
-}
-
-// findMetadataFileByID searches for a metadata file by ID in both metadata directory and external directories
-func findMetadataFileByID(id string) (string, MediaMetadata, error) {
-	var metadata MediaMetadata
-
-	// Search in main metadata directory
-	files, err := os.ReadDir(metadataDir)
-	if err != nil {
-		return "", metadata, fmt.Errorf("failed to read metadata directory: %v", err)
-	}
-
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
-			filePath := filepath.Join(metadataDir, file.Name())
-
-			tempMetadata, readErr := readMetadataFromFile(filePath)
-			if readErr != nil {
-				log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
-				continue
-			}
-
-			if tempMetadata.ID == id {
-				return filePath, tempMetadata, nil
-			}
-		}
-	}
-
-	// Search in external markdown directories
-	for _, externalDir := range AppConfig.ExternalMarkdownDirs {
-		// Check if directory exists
-		if _, err := os.Stat(externalDir); os.IsNotExist(err) {
-			continue
-		}
-
-		files, err := os.ReadDir(externalDir)
-		if err != nil {
-			log.Printf("Failed to read external markdown directory %s: %v", externalDir, err)
-			continue
-		}
-
-		for _, file := range files {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
-				filePath := filepath.Join(externalDir, file.Name())
-
-				tempMetadata, readErr := readMetadataFromFile(filePath)
-				if readErr != nil {
-					log.Printf("Failed to read external markdown file %s: %v", file.Name(), readErr)
-					continue
-				}
-
-				if tempMetadata.ID == id {
-					return filePath, tempMetadata, nil
-				}
-			}
-		}
-	}
-
-	return "", metadata, fmt.Errorf("metadata with ID %s not found", id)
-}
-
-// Helper function to write a Markdown file with frontmatter
-func writeMarkdownFile(filePath string, data interface{}, body string) error {
-	// Create a buffer to store the file content
-	var buf bytes.Buffer
-
-	// Write frontmatter with delimiters
-	buf.WriteString("---\n")
-
-	// If data is not nil, write the YAML frontmatter
-	if data != nil {
-		yamlData, err := yaml.Marshal(data)
-		if err != nil {
-			return fmt.Errorf("failed to marshal frontmatter data to YAML: %v", err)
-		}
-		buf.Write(yamlData)
-	}
-
-	buf.WriteString("---\n\n")
-
-	// Write body
-	if body != "" {
-		buf.WriteString(body)
-	}
-
-	// Write to file
-	if err := os.WriteFile(filePath, buf.Bytes(), 0644); err != nil {
-		return fmt.Errorf("failed to write file: %v", err)
-	}
-
-	return nil
-}
-
 func handleTimeline(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Read from individual Markdown files in the timeline directory
 	files, err := os.ReadDir(timelineDir)
 	if err != nil {
@@ -1801,4 +1570,615 @@ func SaveFiltersConfig(config *FiltersConfig) error {
 	}
 
 	return nil
+}
+
+// Helper function to read a Markdown file with frontmatter
+func readMarkdownFile(filePath string, data interface{}) (string, error) {
+	// Read the file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %v", err)
+	}
+
+	// Parse frontmatter
+	body, err := frontmatter.Parse(bytes.NewReader(content), data)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse frontmatter: %v", err)
+	}
+
+	return string(body), nil
+}
+
+// scanMarkdownFiles scans both metadata directory and external markdown directories for markdown files
+func scanMarkdownFiles(filterFunc func(MediaMetadata) bool) ([]MediaMetadata, error) {
+	allMetadata := make([]MediaMetadata, 0)
+
+	// Scan the main metadata directory
+	files, err := os.ReadDir(metadataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read metadata directory: %v", err)
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+			filePath := filepath.Join(metadataDir, file.Name())
+			metadata, err := readMetadataFromFile(filePath)
+			if err != nil {
+				log.Printf("Failed to read metadata file %s: %v", file.Name(), err)
+				continue
+			}
+
+			if filterFunc == nil || filterFunc(metadata) {
+				allMetadata = append(allMetadata, metadata)
+			}
+		}
+	}
+
+	// Scan external markdown directories
+	for _, externalDir := range AppConfig.ExternalMarkdownDirs {
+		// Check if directory exists
+		if _, err := os.Stat(externalDir); os.IsNotExist(err) {
+			log.Printf("External markdown directory does not exist: %s", externalDir)
+			continue
+		}
+
+		files, err := os.ReadDir(externalDir)
+		if err != nil {
+			log.Printf("Failed to read external markdown directory %s: %v", externalDir, err)
+			continue
+		}
+
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+				filePath := filepath.Join(externalDir, file.Name())
+				metadata, err := readMetadataFromFile(filePath)
+				if err != nil {
+					log.Printf("Failed to read external markdown file %s: %v", file.Name(), err)
+					continue
+				}
+
+				if filterFunc == nil || filterFunc(metadata) {
+					allMetadata = append(allMetadata, metadata)
+				}
+			}
+		}
+	}
+
+	return allMetadata, nil
+}
+
+// readMetadataFromFile reads metadata from a markdown file
+func readMetadataFromFile(filePath string) (MediaMetadata, error) {
+	var metadata MediaMetadata
+
+	// Read Markdown file with frontmatter
+	content, readErr := readMarkdownFile(filePath, &metadata)
+	if readErr != nil {
+		return metadata, readErr
+	}
+	metadata.Transcription = content
+	metadata.Notes = content // Set notes field to same content
+
+	// Ensure Labels is never nil
+	if metadata.Labels == nil {
+		metadata.Labels = []string{}
+	}
+
+	return metadata, nil
+}
+
+// findMetadataFileByID searches for a metadata file by ID in both metadata directory and external directories
+func findMetadataFileByID(id string) (string, MediaMetadata, error) {
+	var metadata MediaMetadata
+
+	// Search in main metadata directory
+	files, err := os.ReadDir(metadataDir)
+	if err != nil {
+		return "", metadata, fmt.Errorf("failed to read metadata directory: %v", err)
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+			filePath := filepath.Join(metadataDir, file.Name())
+
+			tempMetadata, readErr := readMetadataFromFile(filePath)
+			if readErr != nil {
+				log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
+				continue
+			}
+
+			if tempMetadata.ID == id {
+				return filePath, tempMetadata, nil
+			}
+		}
+	}
+
+	// Search in external markdown directories
+	for _, externalDir := range AppConfig.ExternalMarkdownDirs {
+		// Check if directory exists
+		if _, err := os.Stat(externalDir); os.IsNotExist(err) {
+			continue
+		}
+
+		files, err := os.ReadDir(externalDir)
+		if err != nil {
+			log.Printf("Failed to read external markdown directory %s: %v", externalDir, err)
+			continue
+		}
+
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
+				filePath := filepath.Join(externalDir, file.Name())
+
+				tempMetadata, readErr := readMetadataFromFile(filePath)
+				if readErr != nil {
+					log.Printf("Failed to read external markdown file %s: %v", file.Name(), readErr)
+					continue
+				}
+
+				if tempMetadata.ID == id {
+					return filePath, tempMetadata, nil
+				}
+			}
+		}
+	}
+
+	return "", metadata, fmt.Errorf("metadata with ID %s not found", id)
+}
+
+// Helper function to write a Markdown file with frontmatter
+func writeMarkdownFile(filePath string, data interface{}, body string) error {
+	// Create a buffer to store the file content
+	var buf bytes.Buffer
+
+	// Write frontmatter with delimiters
+	buf.WriteString("---\n")
+
+	// If data is not nil, write the YAML frontmatter
+	if data != nil {
+		yamlData, err := yaml.Marshal(data)
+		if err != nil {
+			return fmt.Errorf("failed to marshal frontmatter data to YAML: %v", err)
+		}
+		buf.Write(yamlData)
+	}
+
+	buf.WriteString("---\n\n")
+
+	// Write body
+	if body != "" {
+		buf.WriteString(body)
+	}
+
+	// Write to file
+	if err := os.WriteFile(filePath, buf.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write file: %v", err)
+	}
+
+	return nil
+}
+
+func ensureDirectories() {
+	dirs := []string{mediaDir, metadataDir, timelineDir, AppConfig.TranscriptionDir}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("Failed to create directory %s: %v", dir, err)
+		}
+	}
+}
+
+// LoadSwimlanesConfig loads the swimlanes configuration from kanban.yaml
+func LoadSwimlanesConfig() (*SwimlanesConfig, error) {
+	swimlanesPath := filepath.Join(configDir, "kanban.yaml")
+
+	data, err := os.ReadFile(swimlanesPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read swimlanes file: %v", err)
+	}
+
+	var config SwimlanesConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse swimlanes YAML: %v", err)
+	}
+
+	return &config, nil
+}
+
+// GetSwimlaneByID retrieves a specific swimlane by its ID from the swimlanes configuration
+func GetSwimlaneByID(swimlaneID string) (*Swimlane, error) {
+	config, err := LoadSwimlanesConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, swimlane := range config.Swimlanes {
+		if swimlane.ID == swimlaneID {
+			return &swimlane, nil
+		}
+	}
+
+	return nil, fmt.Errorf("swimlane with ID %s not found", swimlaneID)
+}
+
+// SaveSwimlanesConfig saves the swimlanes configuration to kanban.yaml
+func SaveSwimlanesConfig(config *SwimlanesConfig) error {
+	swimlanesPath := filepath.Join(configDir, "kanban.yaml")
+
+	// Marshal to YAML
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal swimlanes config to YAML: %v", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(swimlanesPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write swimlanes file: %v", err)
+	}
+
+	return nil
+}
+
+// Handler for swimlanes API
+func handleSwimlanes(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		handleGetSwimlanes(w, r)
+	case http.MethodPost:
+		handleSaveSwimlane(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// Handler for GET /api/swimlanes
+func handleGetSwimlanes(w http.ResponseWriter, r *http.Request) {
+	// Construct the swimlanes.yaml path from config directory
+	swimlanesPath := filepath.Join(configDir, "kanban.yaml")
+
+	// Check if the kanban.yaml file exists
+	if _, err := os.Stat(swimlanesPath); os.IsNotExist(err) {
+		// Create default swimlanes configuration
+		defaultConfig := &SwimlanesConfig{
+			Version: "1.0",
+			Metadata: SwimlanesMetadata{
+				Name:        "Default Swimlanes",
+				Description: "Default swimlane configuration",
+				Created:     time.Now().Format(time.RFC3339),
+				Updated:     time.Now().Format(time.RFC3339),
+			},
+			Swimlanes: []Swimlane{
+				{
+					ID:          "unlabeled",
+					Name:        "Unlabeled",
+					Description: "Items without specific labels",
+					Icon:        "🏷️",
+					Enabled:     true,
+					Color:       "#f5f5f5",
+					Order:       0,
+				},
+				{
+					ID:          "todo",
+					Name:        "To Do",
+					Description: "Tasks to be completed",
+					Icon:        "📝",
+					Enabled:     true,
+					Color:       "#fff3e0",
+					Order:       1,
+				},
+				{
+					ID:          "in_progress",
+					Name:        "In Progress",
+					Description: "Currently working on",
+					Icon:        "🔄",
+					Enabled:     true,
+					Color:       "#e3f2fd",
+					Order:       2,
+				},
+				{
+					ID:          "done",
+					Name:        "Done",
+					Description: "Completed tasks",
+					Icon:        "✅",
+					Enabled:     true,
+					Color:       "#e8f5e8",
+					Order:       3,
+				},
+			},
+		}
+
+		// Save the default configuration
+		if err := SaveSwimlanesConfig(defaultConfig); err != nil {
+			log.Printf("Error creating default swimlanes configuration: %v", err)
+			http.Error(w, "Failed to create default swimlanes configuration", http.StatusInternalServerError)
+			return
+		}
+
+		// Return the default configuration
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(defaultConfig)
+		return
+	}
+
+	// Read the kanban.yaml file
+	data, err := os.ReadFile(swimlanesPath)
+	if err != nil {
+		log.Printf("Error reading swimlanes file %s: %v", swimlanesPath, err)
+		http.Error(w, "Failed to read swimlanes configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the YAML data
+	var swimlanesConfig SwimlanesConfig
+	if err := yaml.Unmarshal(data, &swimlanesConfig); err != nil {
+		log.Printf("Error parsing swimlanes YAML: %v", err)
+		http.Error(w, "Failed to parse swimlanes configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Return the swimlanes configuration as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(swimlanesConfig)
+}
+
+// SaveSwimlaneRequest represents the request body for saving a swimlane
+type SaveSwimlaneRequest struct {
+	Swimlane Swimlane `json:"swimlane"`
+}
+
+// Handler for POST /api/swimlanes - save a new swimlane
+func handleSaveSwimlane(w http.ResponseWriter, r *http.Request) {
+	// Parse request body
+	var req SaveSwimlaneRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if req.Swimlane.ID == "" || req.Swimlane.Name == "" {
+		http.Error(w, "Swimlane ID and name are required", http.StatusBadRequest)
+		return
+	}
+
+	// Load current swimlanes config
+	config, err := LoadSwimlanesConfig()
+	if err != nil {
+		http.Error(w, "Failed to load swimlanes configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if swimlane already exists (update) or is new (add)
+	swimlaneExists := false
+	for i, existingSwimlane := range config.Swimlanes {
+		if existingSwimlane.ID == req.Swimlane.ID {
+			// Update existing swimlane
+			config.Swimlanes[i] = req.Swimlane
+			swimlaneExists = true
+			break
+		}
+	}
+
+	// If swimlane doesn't exist, add it
+	if !swimlaneExists {
+		config.Swimlanes = append(config.Swimlanes, req.Swimlane)
+	}
+
+	// Update metadata timestamp
+	config.Metadata.Updated = time.Now().Format(time.RFC3339)
+
+	// Save the updated configuration
+	if err := SaveSwimlanesConfig(config); err != nil {
+		log.Printf("Error saving swimlanes configuration: %v", err)
+		http.Error(w, "Failed to save swimlane", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "success",
+		"swimlane": req.Swimlane,
+	})
+}
+
+// ReorderSwimlanesRequest represents the request body for reordering swimlanes
+type ReorderSwimlanesRequest struct {
+	SwimlaneIDs []string `json:"swimlaneIds"`
+}
+
+// Handler for PUT /api/swimlanes/reorder
+func handleSwimlanesReorder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req ReorderSwimlanesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate that swimlaneIds is provided
+	if req.SwimlaneIDs == nil {
+		http.Error(w, "swimlaneIds is required", http.StatusBadRequest)
+		return
+	}
+
+	// Load current swimlanes config
+	config, err := LoadSwimlanesConfig()
+	if err != nil {
+		http.Error(w, "Failed to load swimlanes configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Create a map of existing swimlanes for lookup
+	swimlaneMap := make(map[string]Swimlane)
+	for _, swimlane := range config.Swimlanes {
+		swimlaneMap[swimlane.ID] = swimlane
+	}
+
+	// Validate that all swimlane IDs in the request exist
+	for _, swimlaneID := range req.SwimlaneIDs {
+		if _, exists := swimlaneMap[swimlaneID]; !exists {
+			http.Error(w, fmt.Sprintf("Swimlane ID %s does not exist", swimlaneID), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Reorder swimlanes based on the provided order
+	newSwimlanes := make([]Swimlane, 0, len(req.SwimlaneIDs))
+	for _, swimlaneID := range req.SwimlaneIDs {
+		if swimlane, exists := swimlaneMap[swimlaneID]; exists {
+			newSwimlanes = append(newSwimlanes, swimlane)
+		}
+	}
+
+	// Add any swimlanes that weren't included in the reorder request (preserve existing ones)
+	for _, swimlane := range config.Swimlanes {
+		found := false
+		for _, requestedID := range req.SwimlaneIDs {
+			if swimlane.ID == requestedID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			newSwimlanes = append(newSwimlanes, swimlane)
+		}
+	}
+
+	// Update the swimlanes array with the new order
+	config.Swimlanes = newSwimlanes
+	config.Metadata.Updated = time.Now().Format(time.RFC3339)
+
+	// Save the updated configuration
+	if err := SaveSwimlanesConfig(config); err != nil {
+		log.Printf("Error saving swimlanes configuration: %v", err)
+		http.Error(w, "Failed to reorder swimlanes", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Swimlanes reordered successfully",
+	})
+}
+
+// Handler for /api/swimlanes/{id} - handles DELETE requests
+func handleSwimlanesWithID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract swimlane ID from URL
+	swimlaneID := strings.TrimPrefix(r.URL.Path, "/api/swimlanes/")
+	if swimlaneID == "" {
+		http.Error(w, "Swimlane ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Load current swimlanes config
+	config, err := LoadSwimlanesConfig()
+	if err != nil {
+		http.Error(w, "Failed to load swimlanes configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Find and remove the swimlane
+	swimlaneFound := false
+	for i, swimlane := range config.Swimlanes {
+		if swimlane.ID == swimlaneID {
+			// Remove swimlane from slice
+			config.Swimlanes = append(config.Swimlanes[:i], config.Swimlanes[i+1:]...)
+			swimlaneFound = true
+			break
+		}
+	}
+
+	if !swimlaneFound {
+		http.Error(w, "Swimlane not found", http.StatusNotFound)
+		return
+	}
+
+	// Update metadata timestamp
+	config.Metadata.Updated = time.Now().Format(time.RFC3339)
+
+	// Save the updated configuration
+	if err := SaveSwimlanesConfig(config); err != nil {
+		log.Printf("Error saving swimlanes configuration: %v", err)
+		http.Error(w, "Failed to delete swimlane", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "success",
+		"deletedID": swimlaneID,
+	})
+}
+
+func main() {
+	// Load configuration
+	config, err := loadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	AppConfig = config
+
+	// Set global directory variables from config
+	mediaDir = config.MediaDir
+	metadataDir = config.MetadataDir
+	timelineDir = filepath.Join(config.MetadataDir, "timeline")
+	timelineFile = filepath.Join(config.MetadataDir, "timeline.md")
+
+	// Set config directory (same logic as in config.go)
+	if envConfigDir := os.Getenv("REELARC_CONFIG"); envConfigDir != "" {
+		configDir = envConfigDir
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatalf("Failed to get user home directory: %v", err)
+		}
+		configDir = filepath.Join(homeDir, ".config", "reelarc")
+	}
+
+	// Ensure data directories exist
+	ensureDirectories()
+
+	// Initialize transcription system
+	InitTranscriptionSystem()
+
+	// API routes
+	http.HandleFunc("/api/timeline", handleTimeline)
+	http.HandleFunc("/api/upload", handleUpload)
+	http.HandleFunc("/api/metadata/", handleMetadata)
+	http.HandleFunc("/api/media", handleMedia)
+	http.HandleFunc("/api/media/update-type", handleUpdateMediaType)
+	http.HandleFunc("/api/transcription/status", handleTranscriptionStatus)
+	http.HandleFunc("/api/labels/update", handleUpdateLabels)
+	http.HandleFunc("/api/filters", handleFilters)
+	http.HandleFunc("/api/filters/reorder", handleFiltersReorder)
+	http.HandleFunc("/api/filters/pin", handlePinFilter)
+	http.HandleFunc("/api/filters/unpin", handleUnpinFilter)
+	http.HandleFunc("/api/filters/", handleFiltersWithID)
+	http.HandleFunc("/api/swimlanes", handleSwimlanes)
+	http.HandleFunc("/api/swimlanes/reorder", handleSwimlanesReorder)
+	http.HandleFunc("/api/swimlanes/", handleSwimlanesWithID)
+
+	// Serve media files
+	http.HandleFunc("/media/", handleMediaFiles)
+
+	// Serve static files in production
+	http.HandleFunc("/", handleStaticFiles)
+
+	// Start server
+	port := 8080
+	fmt.Printf("Server starting on http://localhost:%d\n", port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }

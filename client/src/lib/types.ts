@@ -139,3 +139,25 @@ export interface ZoomLevel {
   duration: number; // Duration in milliseconds
   snapTo: 'hour' | 'day' | 'week' | 'month' | 'year';
 }
+
+// Swimlane types
+export interface Swimlane {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  enabled: boolean;
+  color?: string;
+  order: number;
+}
+
+export interface SwimlanesConfig {
+  version: string;
+  metadata: {
+    name: string;
+    description: string;
+    created: string;
+    updated: string;
+  };
+  swimlanes: Swimlane[];
+}

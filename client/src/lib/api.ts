@@ -1,4 +1,4 @@
-import type { MediaItem, TranscriptionStatus, MediaFilters, FiltersConfig, Filter } from './types';
+import type { MediaItem, TranscriptionStatus, MediaFilters, FiltersConfig, Filter, SwimlanesConfig, Swimlane } from './types';
 
 /**
  * Fetches media items from the API
@@ -305,6 +305,101 @@ export async function unpinFilter(filterId: string): Promise<any> {
     return await response.json();
   } catch (error) {
     console.error('Error unpinning filter:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetches the swimlanes configuration from the API
+ * @returns Promise with swimlanes configuration
+ */
+export async function fetchSwimlanesConfig(): Promise<SwimlanesConfig | null> {
+  try {
+    const response = await fetch('/api/swimlanes');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch swimlanes config: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching swimlanes config:', error);
+    return null;
+  }
+}
+
+/**
+ * Saves a swimlane to the API
+ * @param swimlane Swimlane object to save
+ * @returns Promise with success response
+ */
+export async function saveSwimlane(swimlane: Swimlane): Promise<any> {
+  try {
+    const response = await fetch('/api/swimlanes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        swimlane
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to save swimlane: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error saving swimlane:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reorders the display order of swimlanes
+ * @param swimlaneIds Array of swimlane IDs in the desired order
+ * @returns Promise with success response
+ */
+export async function reorderSwimlanes(swimlaneIds: string[]): Promise<any> {
+  try {
+    const response = await fetch('/api/swimlanes/reorder', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        swimlaneIds
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to reorder swimlanes: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error reordering swimlanes:', error);
+    throw error;
+  }
+}
+
+/**
+ * Deletes a swimlane by ID
+ * @param swimlaneId Swimlane ID to delete
+ * @returns Promise with success response
+ */
+export async function deleteSwimlane(swimlaneId: string): Promise<any> {
+  try {
+    const response = await fetch(`/api/swimlanes/${swimlaneId}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete swimlane: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error deleting swimlane:', error);
     throw error;
   }
 }

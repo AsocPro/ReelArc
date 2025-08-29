@@ -6,8 +6,9 @@
   import TranscriptionStatus from './components/TranscriptionStatus.svelte';
   import MediaDetails from './components/MediaDetails.svelte';
   import FilterManager from './components/FilterManager.svelte';
-  import type { MediaItem, MediaFilters, FiltersConfig } from './lib/types';
-  import { fetchMediaItems, fetchFiltersConfig, saveFilter } from './lib/api';
+  import SwimlaneManager from './components/SwimlaneManager.svelte';
+  import type { MediaItem, MediaFilters, FiltersConfig, SwimlanesConfig } from './lib/types';
+  import { fetchMediaItems, fetchFiltersConfig, saveFilter, fetchSwimlanesConfig } from './lib/api';
   
   let mediaItems: MediaItem[] = [];
   let selectedItem: MediaItem | null = null;
@@ -26,6 +27,7 @@
   let showFilters = false;
   let activeQuickFilter: string | null = null;
   let filtersConfig: FiltersConfig | null = null;
+  let swimlanesConfig: SwimlanesConfig | null = null;
   let availableMediaTypes = ['photo', 'audio', 'video', 'note'];
   
   // Relative filtering state
@@ -49,6 +51,7 @@
   
   onMount(async () => {
     await loadFiltersConfig();
+    await loadSwimlanesConfig();
     await loadMediaItems();
   });
   
@@ -62,6 +65,14 @@
       }
     } catch (err) {
       console.error('Failed to load filters config:', err);
+    }
+  }
+
+  async function loadSwimlanesConfig() {
+    try {
+      swimlanesConfig = await fetchSwimlanesConfig();
+    } catch (err) {
+      console.error('Failed to load swimlanes config:', err);
     }
   }
   
@@ -403,6 +414,11 @@
       console.error('Failed to save filter:', error);
       alert('Failed to save filter. Please try again.');
     }
+  }
+
+  async function handleSwimlanesReordered() {
+    // Reload swimlanes configuration after reordering
+    await loadSwimlanesConfig();
   }
 </script>
 
@@ -836,15 +852,16 @@
 
     <!-- Timeline viewer with tabbed interface always visible at the top -->
     <div class="timeline-container">
-       <TimelineViewer
-         data={mediaItems}
-         {loading}
-         {error}
-         on:item-select={handleItemSelect}
-         on:item-update={handleItemUpdate}
-         on:center-playhead
-         bind:this={timelineViewerComponent}
-       />
+        <TimelineViewer
+          data={mediaItems}
+          {loading}
+          {error}
+          {swimlanesConfig}
+          on:item-select={handleItemSelect}
+          on:item-update={handleItemUpdate}
+          on:center-playhead
+          bind:this={timelineViewerComponent}
+        />
     </div>
 
     <div class="tabs">
@@ -877,6 +894,13 @@
       >
         Filter Manager
       </button>
+      <button
+        class="tab-button"
+        class:active={activeTab === 'swimlanes'}
+        on:click={() => setActiveTab('swimlanes')}
+      >
+        Swimlane Manager
+      </button>
     </div>
     
     <div class="content-section">
@@ -901,6 +925,13 @@
           <FilterManager
             {filtersConfig}
             on:filters-reordered={handleFiltersReordered}
+          />
+        </div>
+      {:else if activeTab === 'swimlanes'}
+        <div class="swimlanes-section">
+          <SwimlaneManager
+            {swimlanesConfig}
+            on:swimlanes-reordered={handleSwimlanesReordered}
           />
         </div>
       {/if}
@@ -1009,7 +1040,8 @@
   .upload-section,
   .details-section,
   .transcription-section,
-  .filters-section {
+  .filters-section,
+  .swimlanes-section {
     height: 100%;
     min-height: 400px;
   }

@@ -1,11 +1,12 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { MediaItem } from '../lib/types';
+  import type { MediaItem, SwimlanesConfig } from '../lib/types';
   import { updateLabels } from '../lib/api';
 
   export let data: MediaItem[] = [];
   export let loading = false;
   export let error = '';
+  export let swimlanesConfig: SwimlanesConfig | null = null;
 
   const dispatch = createEventDispatcher<{
     'item-select': MediaItem;
@@ -137,29 +138,71 @@
 
 
 
-  // Group items by labels for Kanban columns
+  // Group items by swimlane labels for Kanban columns
   $: groupedItems = data.reduce((groups, item) => {
-    // Determine the primary label for this item
-    const primaryLabel: string = (item.labels && item.labels.length > 0 && item.labels[0]) ? item.labels[0] : 'Unlabeled';
+    // If swimlanes are configured, use the first matching swimlane
+    if (swimlanesConfig && swimlanesConfig.swimlanes.length > 0) {
+      // Find the first enabled swimlane that matches an item label
+      let matchedSwimlane = null;
+      for (const swimlane of swimlanesConfig.swimlanes) {
+        if (swimlane.enabled && item.labels && item.labels.includes(swimlane.name)) {
+          matchedSwimlane = swimlane;
+          break;
+        }
+      }
 
-    if (!groups[primaryLabel]) {
-      groups[primaryLabel] = [];
+      // If no swimlane matches, use the first enabled swimlane as default
+      if (!matchedSwimlane) {
+        matchedSwimlane = swimlanesConfig.swimlanes.find(s => s.enabled) || swimlanesConfig.swimlanes[0];
+      }
+
+      if (matchedSwimlane) {
+        if (!groups[matchedSwimlane.name]) {
+          groups[matchedSwimlane.name] = [];
+        }
+        groups[matchedSwimlane.name].push(item);
+      }
+    } else {
+      // Fallback to original logic if no swimlanes configured
+      const primaryLabel: string = (item.labels && item.labels.length > 0 && item.labels[0]) ? item.labels[0] : 'Unlabeled';
+
+      if (!groups[primaryLabel]) {
+        groups[primaryLabel] = [];
+      }
+      groups[primaryLabel].push(item);
     }
-    groups[primaryLabel].push(item);
+
     return groups;
   }, {} as Record<string, MediaItem[]>);
 
-  // Get all unique labels from data, including 'Unlabeled'
-  $: availableLabels = Array.from(
-    new Set(
-      data.flatMap(item => item.labels.length > 0 ? item.labels : ['Unlabeled'])
-    )
-  ).sort();
+  // Get swimlane order from configuration
+  $: swimlaneOrder = swimlanesConfig && swimlanesConfig.swimlanes.length > 0
+    ? swimlanesConfig.swimlanes
+        .filter(s => s.enabled)
+        .sort((a, b) => a.order - b.order)
+        .map(s => s.name)
+    : [];
 
-  // Define column order (Unlabeled first, then alphabetical)
-  $: columnOrder = ['Unlabeled', ...availableLabels.filter(label => label !== 'Unlabeled')];
+  // Define column order based on swimlanes or fallback to original logic
+  $: columnOrder = swimlaneOrder.length > 0 ? swimlaneOrder : (() => {
+    const availableLabels = Array.from(
+      new Set(
+        data.flatMap(item => item.labels.length > 0 ? item.labels : ['Unlabeled'])
+      )
+    ).sort();
+    return ['Unlabeled', ...availableLabels.filter(label => label !== 'Unlabeled')];
+  })();
 
   function getColumnTitle(label: string): string {
+    // If swimlanes are configured, find the swimlane and use its name
+    if (swimlanesConfig) {
+      const swimlane = swimlanesConfig.swimlanes.find(s => s.name === label);
+      if (swimlane) {
+        return swimlane.name;
+      }
+    }
+
+    // Fallback to original logic
     if (label === 'Unlabeled') {
       return 'Unlabeled';
     }
@@ -167,6 +210,15 @@
   }
 
   function getColumnColor(label: string): string {
+    // If swimlanes are configured, use the swimlane's color
+    if (swimlanesConfig) {
+      const swimlane = swimlanesConfig.swimlanes.find(s => s.name === label);
+      if (swimlane && swimlane.color) {
+        return swimlane.color;
+      }
+    }
+
+    // Fallback to original logic
     if (label === 'Unlabeled') {
       return '#f5f5f5'; // Light gray for unlabeled
     }
@@ -192,6 +244,19 @@
     const colorIndex = Math.abs(hash) % colors.length;
     return colors[colorIndex] || '#f5f5f5';
   }
+
+  function getColumnIcon(label: string): string {
+    // If swimlanes are configured, use the swimlane's icon
+    if (swimlanesConfig) {
+      const swimlane = swimlanesConfig.swimlanes.find(s => s.name === label);
+      if (swimlane && swimlane.icon) {
+        return swimlane.icon;
+      }
+    }
+
+    // Default icon
+    return '🏷️';
+  }
 </script>
 
 <div class="kanban-container">
@@ -208,11 +273,7 @@
         <div class="kanban-column" style="background-color: {getColumnColor(label)}">
           <div class="column-header">
             <h3 class="column-title">
-              {#if label === 'Unlabeled'}
-                <span class="type-icon">🏷️</span>
-              {:else}
-                <span class="type-icon">🏷️</span>
-              {/if}
+              <span class="type-icon">{getColumnIcon(label)}</span>
               {getColumnTitle(label)}
             </h3>
             <span class="item-count">{items.length}</span>
