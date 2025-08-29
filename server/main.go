@@ -73,7 +73,7 @@ type RelativeDate struct {
 
 // FilterDateRange represents date range criteria for filters
 type FilterDateRange struct {
-	Type      string `yaml:"type" json:"type"`
+	Type string `yaml:"type" json:"type"`
 	// For fixed dates
 	StartDate string `yaml:"startDate,omitempty" json:"startDate,omitempty"`
 	EndDate   string `yaml:"endDate,omitempty" json:"endDate,omitempty"`
@@ -214,16 +214,16 @@ func applyFixedDateRange(itemTime time.Time, dateRange FilterDateRange) bool {
 // applyRelativeDateRange applies relative date range filtering
 func applyRelativeDateRange(itemTime time.Time, dateRange FilterDateRange) bool {
 	now := time.Now()
-	
+
 	var startTime, endTime time.Time
-	
+
 	// Check if this is a range with separate start and end relative dates
 	if dateRange.StartRelative != nil && dateRange.EndRelative != nil {
 		// Calculate start time from startRelative
 		startTime = calculateRelativeTime(now, *dateRange.StartRelative)
-		// Calculate end time from endRelative  
+		// Calculate end time from endRelative
 		endTime = calculateRelativeTime(now, *dateRange.EndRelative)
-		
+
 		// Ensure startTime is before endTime
 		if startTime.After(endTime) {
 			startTime, endTime = endTime, startTime
@@ -379,7 +379,7 @@ func applyMediaTypesFilter(metadata MediaMetadata, filterTypes []string) bool {
 // LoadFiltersConfig loads the filters configuration from filters.yaml
 func LoadFiltersConfig() (*FiltersConfig, error) {
 	filtersPath := filepath.Join(configDir, "filters.yaml")
-	
+
 	data, err := os.ReadFile(filtersPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read filters file: %v", err)
@@ -422,7 +422,7 @@ func main() {
 	metadataDir = config.MetadataDir
 	timelineDir = filepath.Join(config.MetadataDir, "timeline")
 	timelineFile = filepath.Join(config.MetadataDir, "timeline.md")
-	
+
 	// Set config directory (same logic as in config.go)
 	if envConfigDir := os.Getenv("REELARC_CONFIG"); envConfigDir != "" {
 		configDir = envConfigDir
@@ -445,6 +445,7 @@ func main() {
 	http.HandleFunc("/api/upload", handleUpload)
 	http.HandleFunc("/api/metadata/", handleMetadata)
 	http.HandleFunc("/api/media", handleMedia)
+	http.HandleFunc("/api/media/update-type", handleUpdateMediaType)
 	http.HandleFunc("/api/transcription/status", handleTranscriptionStatus)
 	http.HandleFunc("/api/labels/update", handleUpdateLabels)
 	http.HandleFunc("/api/filters", handleFilters)
@@ -494,13 +495,13 @@ func readMarkdownFile(filePath string, data interface{}) (string, error) {
 // scanMarkdownFiles scans both metadata directory and external markdown directories for markdown files
 func scanMarkdownFiles(filterFunc func(MediaMetadata) bool) ([]MediaMetadata, error) {
 	allMetadata := make([]MediaMetadata, 0)
-	
+
 	// Scan the main metadata directory
 	files, err := os.ReadDir(metadataDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata directory: %v", err)
 	}
-	
+
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
 			filePath := filepath.Join(metadataDir, file.Name())
@@ -509,13 +510,13 @@ func scanMarkdownFiles(filterFunc func(MediaMetadata) bool) ([]MediaMetadata, er
 				log.Printf("Failed to read metadata file %s: %v", file.Name(), err)
 				continue
 			}
-			
+
 			if filterFunc == nil || filterFunc(metadata) {
 				allMetadata = append(allMetadata, metadata)
 			}
 		}
 	}
-	
+
 	// Scan external markdown directories
 	for _, externalDir := range AppConfig.ExternalMarkdownDirs {
 		// Check if directory exists
@@ -523,13 +524,13 @@ func scanMarkdownFiles(filterFunc func(MediaMetadata) bool) ([]MediaMetadata, er
 			log.Printf("External markdown directory does not exist: %s", externalDir)
 			continue
 		}
-		
+
 		files, err := os.ReadDir(externalDir)
 		if err != nil {
 			log.Printf("Failed to read external markdown directory %s: %v", externalDir, err)
 			continue
 		}
-		
+
 		for _, file := range files {
 			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
 				filePath := filepath.Join(externalDir, file.Name())
@@ -538,21 +539,21 @@ func scanMarkdownFiles(filterFunc func(MediaMetadata) bool) ([]MediaMetadata, er
 					log.Printf("Failed to read external markdown file %s: %v", file.Name(), err)
 					continue
 				}
-				
+
 				if filterFunc == nil || filterFunc(metadata) {
 					allMetadata = append(allMetadata, metadata)
 				}
 			}
 		}
 	}
-	
+
 	return allMetadata, nil
 }
 
 // readMetadataFromFile reads metadata from a markdown file
 func readMetadataFromFile(filePath string) (MediaMetadata, error) {
 	var metadata MediaMetadata
-	
+
 	// Read Markdown file with frontmatter
 	content, readErr := readMarkdownFile(filePath, &metadata)
 	if readErr != nil {
@@ -560,71 +561,71 @@ func readMetadataFromFile(filePath string) (MediaMetadata, error) {
 	}
 	metadata.Transcription = content
 	metadata.Notes = content // Set notes field to same content
-	
+
 	// Ensure Labels is never nil
 	if metadata.Labels == nil {
 		metadata.Labels = []string{}
 	}
-	
+
 	return metadata, nil
 }
 
 // findMetadataFileByID searches for a metadata file by ID in both metadata directory and external directories
 func findMetadataFileByID(id string) (string, MediaMetadata, error) {
 	var metadata MediaMetadata
-	
+
 	// Search in main metadata directory
 	files, err := os.ReadDir(metadataDir)
 	if err != nil {
 		return "", metadata, fmt.Errorf("failed to read metadata directory: %v", err)
 	}
-	
+
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
 			filePath := filepath.Join(metadataDir, file.Name())
-			
+
 			tempMetadata, readErr := readMetadataFromFile(filePath)
 			if readErr != nil {
 				log.Printf("Failed to read metadata file %s: %v", file.Name(), readErr)
 				continue
 			}
-			
+
 			if tempMetadata.ID == id {
 				return filePath, tempMetadata, nil
 			}
 		}
 	}
-	
+
 	// Search in external markdown directories
 	for _, externalDir := range AppConfig.ExternalMarkdownDirs {
 		// Check if directory exists
 		if _, err := os.Stat(externalDir); os.IsNotExist(err) {
 			continue
 		}
-		
+
 		files, err := os.ReadDir(externalDir)
 		if err != nil {
 			log.Printf("Failed to read external markdown directory %s: %v", externalDir, err)
 			continue
 		}
-		
+
 		for _, file := range files {
 			if !file.IsDir() && strings.HasSuffix(file.Name(), mdExt) {
 				filePath := filepath.Join(externalDir, file.Name())
-				
+
 				tempMetadata, readErr := readMetadataFromFile(filePath)
 				if readErr != nil {
 					log.Printf("Failed to read external markdown file %s: %v", file.Name(), readErr)
 					continue
 				}
-				
+
 				if tempMetadata.ID == id {
 					return filePath, tempMetadata, nil
 				}
 			}
 		}
 	}
-	
+
 	return "", metadata, fmt.Errorf("metadata with ID %s not found", id)
 }
 
@@ -934,7 +935,7 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, fmt.Sprintf("Filter not found: %v", err), http.StatusNotFound)
 				return
 			}
-			
+
 			if !filter.Enabled {
 				http.Error(w, "Filter is disabled", http.StatusBadRequest)
 				return
@@ -979,7 +980,7 @@ func handleMetadata(w http.ResponseWriter, r *http.Request) {
 
 			// Create legacy filter criteria
 			var legacyDateRange *FilterDateRange
-			
+
 			// Check for relative date range filter parameter
 			if dateRangeFilterParam != "" {
 				var dateRangeFilter FilterDateRange
@@ -1098,7 +1099,7 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Filter not found: %v", err), http.StatusNotFound)
 			return
 		}
-		
+
 		if !filter.Enabled {
 			http.Error(w, "Filter is disabled", http.StatusBadRequest)
 			return
@@ -1143,7 +1144,7 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 
 		// Create legacy filter criteria
 		var legacyDateRange *FilterDateRange
-		
+
 		// Check for relative date range filter parameter
 		if dateRangeFilterParam != "" {
 			var dateRangeFilter FilterDateRange
@@ -1225,6 +1226,12 @@ type UpdateLabelsRequest struct {
 	Labels []string `json:"labels"`
 }
 
+// UpdateMediaTypeRequest represents the request body for updating media type
+type UpdateMediaTypeRequest struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+}
+
 // Handler for updating labels API
 func handleUpdateLabels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -1290,6 +1297,88 @@ func handleUpdateLabels(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(metadata)
 }
 
+// Handler for updating media type API
+func handleUpdateMediaType(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req UpdateMediaTypeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if req.ID == "" {
+		http.Error(w, "ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Type == "" {
+		http.Error(w, "Type is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate type is one of the allowed values
+	validTypes := map[string]bool{
+		"photo": true,
+		"audio": true,
+		"video": true,
+		"note":  true,
+	}
+	if !validTypes[req.Type] {
+		http.Error(w, "Invalid type. Must be one of: photo, audio, video, note", http.StatusBadRequest)
+		return
+	}
+
+	// Find the metadata file by ID
+	targetFile, metadata, err := findMetadataFileByID(req.ID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Media item not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to search for metadata", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Update the type
+	metadata.Type = req.Type
+
+	// Create frontmatter data for writing
+	frontmatterData := struct {
+		ID        string   `yaml:"id"`
+		Filename  string   `yaml:"filename"`
+		Path      string   `yaml:"path"`
+		Type      string   `yaml:"type"`
+		Timestamp string   `yaml:"timestamp"`
+		Duration  float64  `yaml:"duration,omitempty"`
+		Labels    []string `yaml:"labels"`
+	}{
+		ID:        metadata.ID,
+		Filename:  metadata.Filename,
+		Path:      metadata.Path,
+		Type:      metadata.Type,
+		Timestamp: metadata.Timestamp,
+		Duration:  metadata.Duration,
+		Labels:    metadata.Labels,
+	}
+
+	// Write the updated metadata back to the file
+	if err := writeMarkdownFile(targetFile, frontmatterData, metadata.Transcription); err != nil {
+		log.Printf("Error updating metadata file %s: %v", targetFile, err)
+		http.Error(w, "Failed to update media type", http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated metadata
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metadata)
+}
+
 // Handler for quick filters API
 func handleFilters(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -1306,7 +1395,7 @@ func handleFilters(w http.ResponseWriter, r *http.Request) {
 func handleGetFilters(w http.ResponseWriter, r *http.Request) {
 	// Construct the filters.yaml path from config directory
 	filtersPath := filepath.Join(configDir, "filters.yaml")
-	
+
 	// Check if the filters.yaml file exists
 	if _, err := os.Stat(filtersPath); os.IsNotExist(err) {
 		http.Error(w, "Filters configuration not found", http.StatusNotFound)
@@ -1477,7 +1566,7 @@ func handleFiltersReorder(w http.ResponseWriter, r *http.Request) {
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "success",
+		"status":  "success",
 		"message": "Filters reordered successfully",
 	})
 }
@@ -1699,7 +1788,7 @@ func handleUnpinFilter(w http.ResponseWriter, r *http.Request) {
 // SaveFiltersConfig saves the filters configuration to filters.yaml
 func SaveFiltersConfig(config *FiltersConfig) error {
 	filtersPath := filepath.Join(configDir, "filters.yaml")
-	
+
 	// Marshal to YAML
 	data, err := yaml.Marshal(config)
 	if err != nil {

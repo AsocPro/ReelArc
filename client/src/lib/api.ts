@@ -129,6 +129,36 @@ export async function updateLabels(id: string, labels: string[]): Promise<MediaI
 }
 
 /**
+ * Updates the type of a media item
+ * @param id Media item ID
+ * @param type New media type
+ * @returns Promise with updated media item
+ */
+export async function updateMediaType(id: string, type: MediaItem['type']): Promise<MediaItem | null> {
+  try {
+    const response = await fetch('/api/media/update-type', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id,
+        type
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update media type: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating media type:', error);
+    return null;
+  }
+}
+
+/**
  * Fetches the filters configuration from the API
  * @returns Promise with filters configuration
  */

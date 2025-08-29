@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { MediaItem } from '../lib/types';
+  import { updateMediaType } from '../lib/api';
 
   export let data: MediaItem[] = [];
   export let loading = false;
@@ -8,10 +9,84 @@
 
   const dispatch = createEventDispatcher<{
     'item-select': MediaItem;
+    'item-update': MediaItem;
   }>();
 
   function handleItemClick(item: MediaItem) {
     dispatch('item-select', item);
+  }
+
+  // Drag and drop state
+  let draggedItem: MediaItem | null = null;
+  let draggedOverColumn: string | null = null;
+
+  function handleDragStart(event: DragEvent, item: MediaItem, sourceType: string) {
+    draggedItem = item;
+    event.dataTransfer!.effectAllowed = 'move';
+    event.dataTransfer!.setData('text/plain', JSON.stringify({
+      itemId: item.id,
+      sourceType: sourceType
+    }));
+
+    // Add dragging class to the card
+    const target = event.target as HTMLElement;
+    target.classList.add('dragging');
+  }
+
+  function handleDragEnd(event: DragEvent) {
+    draggedItem = null;
+    draggedOverColumn = null;
+
+    // Remove dragging class from all cards
+    const cards = document.querySelectorAll('.kanban-card');
+    cards.forEach(card => card.classList.remove('dragging'));
+  }
+
+  function handleDragOver(event: DragEvent, targetType: string) {
+    event.preventDefault();
+    event.dataTransfer!.dropEffect = 'move';
+
+    draggedOverColumn = targetType;
+
+    // Add drag-over class to the column
+    const target = event.currentTarget as HTMLElement;
+    target.classList.add('drag-over');
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    // Remove drag-over class when leaving the column
+    const target = event.currentTarget as HTMLElement;
+    target.classList.remove('drag-over');
+  }
+
+  async function handleDrop(event: DragEvent, targetType: string) {
+    event.preventDefault();
+
+    if (!draggedItem) return;
+
+    // Remove drag-over class
+    const target = event.currentTarget as HTMLElement;
+    target.classList.remove('drag-over');
+
+    // Parse drag data
+    const dragData = JSON.parse(event.dataTransfer!.getData('text/plain'));
+    const sourceType = dragData.sourceType;
+
+    // Only proceed if dropping in a different column
+    if (sourceType !== targetType) {
+      try {
+        // Update the item's type via API
+        const updatedItem = await updateMediaType(draggedItem.id, targetType as MediaItem['type']);
+        if (updatedItem) {
+          dispatch('item-update', updatedItem);
+        }
+      } catch (error) {
+        console.error('Failed to update media type:', error);
+      }
+    }
+
+    draggedItem = null;
+    draggedOverColumn = null;
   }
 
   function formatTimestamp(timestamp: string): string {
@@ -88,13 +163,23 @@
             </h3>
             <span class="item-count">{items.length}</span>
           </div>
-          <div class="column-content">
-            {#each items as item}
-              <div
-                class="kanban-card"
-                class:has-transcription={item.transcription}
-                on:click={() => handleItemClick(item)}
-              >
+           <div
+             class="column-content"
+             class:drag-over={draggedOverColumn === type}
+             on:dragover={(e) => handleDragOver(e, type)}
+             on:dragleave={handleDragLeave}
+             on:drop={(e) => handleDrop(e, type)}
+           >
+             {#each items as item}
+               <div
+                 class="kanban-card"
+                 class:has-transcription={item.transcription}
+                 class:dragging={draggedItem?.id === item.id}
+                 draggable="true"
+                 on:click={() => handleItemClick(item)}
+                 on:dragstart={(e) => handleDragStart(e, item, type)}
+                 on:dragend={handleDragEnd}
+               >
                 <div class="card-header">
                   <div class="filename" title={item.filename}>
                     {item.filename}
@@ -219,6 +304,18 @@
   .kanban-card:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     transform: translateY(-1px);
+  }
+
+  .kanban-card.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .column-content.drag-over {
+    background-color: rgba(33, 150, 243, 0.1);
+    border: 2px dashed #2196f3;
+    border-radius: 6px;
   }
 
   .kanban-card.has-transcription {
