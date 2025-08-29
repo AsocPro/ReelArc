@@ -2051,6 +2051,13 @@ func handleSwimlanesReorder(w http.ResponseWriter, r *http.Request) {
 
 	// Update the swimlanes array with the new order
 	config.Swimlanes = newSwimlanes
+
+	// Update order values for each swimlane
+	for i, swimlane := range config.Swimlanes {
+		swimlane.Order = i
+		config.Swimlanes[i] = swimlane
+	}
+
 	config.Metadata.Updated = time.Now().Format(time.RFC3339)
 
 	// Save the updated configuration
